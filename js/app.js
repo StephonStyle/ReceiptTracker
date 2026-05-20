@@ -331,6 +331,26 @@ function toggleDiag() {
   }
 }
 
+function copyDiag() {
+  const p = getProvider();
+  const k = getApiKey();
+  const lines = [
+    '=== ' + getProviderName() + ' ==' + '= 诊断信息 ===',
+    '当前提供商: ' + getProviderName() + ' (' + p + ')',
+    'API Key: ' + (k ? k.slice(0, 8) + '...' + k.slice(-4) : '未配置'),
+    'localStorage ai_provider: ' + (localStorage.getItem('ai_provider') || '(未设置)'),
+    '',
+    '--- 操作日志 ---',
+    getDiagText()
+  ];
+  const text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(function() {
+    showToast('诊断信息已复制', 'success');
+  }, function() {
+    showToast('复制失败，请手动选中', 'error');
+  });
+}
+
 async function testApiConnection() {
   const provider = getProvider();
   const apiKey = getApiKey();
