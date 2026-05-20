@@ -50,7 +50,7 @@
     <div class="upload-icon">📸</div>
     <div class="upload-text">点击拍照或选择图片</div>
     <div class="upload-hint">支持 JPG / PNG 格式</div>
-    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none" onchange="handleFileSelect(event)">
+    <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
   </div>
 
   <div id="ocrLoading" class="loading" style="display:none">
@@ -224,6 +224,7 @@
       <select id="aiProvider" onchange="onProviderChange()" style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;">
         <option value="claude">Claude API（需代理）</option>
         <option value="deepseek">DeepSeek API</option>
+        <option value="gemini">Google Gemini API</option>
       </select>
     </div>
     <div class="settings-item">

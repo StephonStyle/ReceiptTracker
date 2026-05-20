@@ -284,15 +284,18 @@ function renderAnaDailyChart(daily) {
 
 // ======================== PROVIDER HELPERS ========================
 function getProvider() {
-  return localStorage.getItem('ai_provider') || 'claude';
+  return localStorage.getItem('ai_provider') || 'gemini';
 }
 
 function getApiKey() {
   const p = getProvider();
-  return localStorage.getItem(p === 'deepseek' ? 'deepseek_api_key' : 'claude_api_key');
+  return localStorage.getItem(p === 'deepseek' ? 'deepseek_api_key' : p === 'gemini' ? 'gemini_api_key' : 'claude_api_key');
 }
 
-function getProviderName() { return getProvider() === 'deepseek' ? 'DeepSeek' : 'Claude'; }
+function getProviderName() {
+  const p = getProvider();
+  return p === 'deepseek' ? 'DeepSeek' : p === 'gemini' ? 'Gemini' : 'Claude';
+}
 
 function onProviderChange() {
   localStorage.setItem('ai_provider', document.getElementById('aiProvider').value);
@@ -346,6 +349,8 @@ async function startOcr() {
     let text;
     if (provider === 'deepseek') {
       text = await callDeepSeekOcr(apiKey, dataUrl, mediaType);
+    } else if (provider === 'gemini') {
+      text = await callGeminiOcr(apiKey, dataUrl, mediaType);
     } else {
       text = await callClaudeOcr(apiKey, dataUrl, mediaType);
     }
@@ -439,6 +444,35 @@ async function callDeepSeekOcr(apiKey, dataUrl, mediaType) {
   }
   const result = await resp.json();
   return result.choices[0].message.content;
+}
+
+async function callGeminiOcr(apiKey, dataUrl, mediaType) {
+  const mimeMap = { 'image/jpeg': 'image/jpeg', 'image/png': 'image/png', 'image/webp': 'image/webp', 'image/gif': 'image/gif' };
+  const mime = mimeMap[mediaType] || 'image/jpeg';
+  const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: getOcrPrompt() },
+          { inline_data: { mime_type: mime, data: dataUrl } }
+        ]
+      }]
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    let msg;
+    if (resp.status === 403 || resp.status === 401) msg = 'API Key 无效，请去设置页面检查并重新配置';
+    else if (resp.status === 400) msg = '请求参数有误: ' + err.slice(0, 100);
+    else if (resp.status === 429) msg = 'Gemini API 频率限制，请稍后重试';
+    else msg = 'Gemini API错误(' + resp.status + ')，请稍后重试';
+    throw new Error(msg);
+  }
+  const result = await resp.json();
+  return result.candidates[0].content.parts[0].text;
 }
 
 function getOcrPrompt() {
@@ -1200,7 +1234,7 @@ function checkApiKeyStatus() {
   const key = getApiKey();
   const el = document.getElementById('apiKeyStatus');
   const label = document.getElementById('apiKeyLabel');
-  label.textContent = provider === 'deepseek' ? '🔑 DeepSeek API Key' : '🔑 Claude API Key';
+  label.textContent = provider === 'deepseek' ? '🔑 DeepSeek API Key' : provider === 'gemini' ? '🔑 Gemini API Key' : '🔑 Claude API Key';
   el.textContent = key ? '已配置' : '未配置';
   el.className = 'si-status ' + (key ? 'configured' : 'not-configured');
   // Sync the dropdown
@@ -1219,6 +1253,10 @@ function showApiKeyModal() {
     title.textContent = '🔑 配置 DeepSeek API Key';
     desc.innerHTML = '用于小票 OCR 识别，可在 <a href="https://platform.deepseek.com/api_keys" target="_blank" style="color:var(--primary);">DeepSeek Platform</a> 获取';
     input.placeholder = 'sk-...';
+  } else if (provider === 'gemini') {
+    title.textContent = '🔑 配置 Google Gemini API Key';
+    desc.innerHTML = '用于小票 OCR 识别，可在 <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);">Google AI Studio</a> 免费获取';
+    input.placeholder = 'AIzaSy...';
   } else {
     title.textContent = '🔑 配置 Claude API Key';
     desc.innerHTML = '用于小票识别，可在 <a href="https://console.anthropic.com/" target="_blank" style="color:var(--primary);">Anthropic Console</a> 获取';
@@ -1234,7 +1272,8 @@ function saveApiKey() {
   const key = document.getElementById('apiKeyInput').value.trim();
   if (!key) { showToast('请输入 API Key', 'error'); return; }
   const provider = getProvider();
-  localStorage.setItem(provider === 'deepseek' ? 'deepseek_api_key' : 'claude_api_key', key);
+  const keyName = provider === 'deepseek' ? 'deepseek_api_key' : provider === 'gemini' ? 'gemini_api_key' : 'claude_api_key';
+  localStorage.setItem(keyName, key);
   showToast('✓ API Key 已保存', 'success');
   hideModal('apiKeyModal');
   checkApiKeyStatus();
