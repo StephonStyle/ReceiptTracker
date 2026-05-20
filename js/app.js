@@ -350,7 +350,13 @@ async function startOcr() {
 
     if (!resp.ok) {
       const err = await resp.text();
-      throw new Error('API error: ' + resp.status + ' ' + err);
+      let msg;
+      if (resp.status === 401 || resp.status === 403) msg = 'API Key 无效，请去设置页面检查并重新配置';
+      else if (resp.status === 400) msg = '请求参数有误，请重试或联系开发者';
+      else if (resp.status === 502 || resp.status === 504) msg = '代理服务器连接超时，请稍后重试';
+      else if (resp.status === 500) msg = '代理服务器内部错误，请稍后重试';
+      else msg = 'API错误(' + resp.status + ')，请稍后重试';
+      throw new Error(msg);
     }
 
     const result = await resp.json();
@@ -371,7 +377,12 @@ async function startOcr() {
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
     document.getElementById('ocrLoading').style.display = 'none';
-    showToast('识别失败: ' + e.message, 'error');
+    // Network errors (fetch itself failed)
+    if (e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network')) {
+      showToast('网络连接失败，请检查网络后重试', 'error');
+    } else {
+      showToast('识别失败: ' + e.message, 'error');
+    }
   }
 }
 
