@@ -73,6 +73,7 @@ let currentTab = 'dashboard';
 let currentPage = 'dashboard';
 let charts = {};
 let currentOcrImageFile = null;
+let currentOcrFiles = [];
 let listPage = 1;
 let editingReceiptId = null;
 
@@ -214,7 +215,7 @@ function renderRecentReceipts(receipts) {
     <div class="receipt-card" onclick="showReceiptDetail(${r.id})">
       <div class="rc-header">
         <div class="rc-store">${esc(r.store_name) || '未知商家'}</div>
-        <div class="rc-total">¥${Number(r.total_amount).toFixed(2)}</div>
+        <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
       </div>
       <div class="rc-meta">
         <span>${r.receipt_date || ''}</span>
@@ -284,7 +285,7 @@ function renderAnaDailyChart(daily) {
 
 // ======================== PROVIDER HELPERS ========================
 function getProvider() {
-  return localStorage.getItem('ai_provider') || 'gemini';
+  return localStorage.getItem('ai_provider') || 'claude';
 }
 
 function getApiKey() {
@@ -443,38 +444,61 @@ async function testApiConnection() {
 
 // ======================== OCR UPLOAD ========================
 function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+  const files = Array.from(event.target.files);
+  if (!files.length) return;
 
-  currentOcrImageFile = file;
+  currentOcrFiles = files;
+  currentOcrImageFile = files[0];
 
-  // Show preview + start button
-  const reader = new FileReader();
-  reader.onload = function (e) {
-    const area = document.getElementById('uploadArea');
-    area.innerHTML = `
-      <img src="${e.target.result}" alt="preview">
-      <button class="btn btn-primary btn-lg" style="margin-top:12px;" onclick="event.stopPropagation();startOcr()">🚀 开始 AI 识别</button>
-    `;
-    area.classList.add('has-image');
-  };
-  reader.readAsDataURL(file);
+  // Show gallery of previews
+  var area = document.getElementById('uploadArea');
+  area.classList.add('has-image');
+  area.style.cssText = 'border-style:solid;border-color:var(--success);padding:16px;';
+
+  var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px;">';
+  var loadPromises = files.map(function(file, i) {
+    return new Promise(function(resolve) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        html += '<div style="position:relative;border-radius:8px;overflow:hidden;border:2px solid var(--gray-200);">';
+        html += '<img src="' + e.target.result + '" style="width:100%;height:120px;object-fit:cover;display:block;" alt="photo ' + (i+1) + '">';
+        html += '<div style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.6);color:white;font-size:11px;padding:2px 6px;border-radius:4px;">#' + (i+1) + '</div>';
+        html += '<button class="btn btn-sm btn-primary" style="position:absolute;bottom:4px;right:4px;font-size:11px;padding:4px 8px;" onclick="event.stopPropagation();startOcr(' + i + ')">识别</button>';
+        html += '</div>';
+        resolve();
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  Promise.all(loadPromises).then(function() {
+    html += '</div>';
+    if (files.length > 1) {
+      html += '<button class="btn btn-primary btn-lg btn-block" onclick="startAllOcr()" style="margin-bottom:6px;">🚀 全部识别 (' + files.length + '张)</button>';
+    }
+    html += '<button class="btn btn-outline btn-block" onclick="retakePhoto()">重新选择</button>';
+    area.innerHTML = html;
+  });
 }
 
-async function startOcr() {
-  const file = currentOcrImageFile;
+async function startOcr(fileIndex) {
+  var file;
+  if (fileIndex !== undefined && currentOcrFiles[fileIndex]) {
+    file = currentOcrFiles[fileIndex];
+    currentOcrImageFile = file;
+  } else {
+    file = currentOcrImageFile;
+  }
   if (!file) return;
 
-  // Sync dropdown to localStorage (handles mobile browsers where onchange may not fire)
   syncProviderFromDropdown();
-
-  const apiKey = getApiKey();
-  const provider = getProvider();
+  var apiKey = getApiKey();
+  var provider = getProvider();
   diag('OCR开始: provider=' + provider + ', key=' + (apiKey ? apiKey.slice(0, 8) + '...' : '无'));
   if (!apiKey) {
     showToast('请先在设置中配置 ' + getProviderName() + ' API Key', 'error');
     document.querySelector('.tab[data-page="settings"]').style.animation = 'pulse-warning 0.5s ease-in-out 3';
-    setTimeout(() => {
+    setTimeout(function() {
       document.querySelector('.tab[data-page="settings"]').style.animation = '';
     }, 1500);
     return;
@@ -484,40 +508,7 @@ async function startOcr() {
   document.getElementById('ocrResult').style.display = 'none';
 
   try {
-    // Compress image to avoid Vercel body size limits
-    const compressedFile = await compressImage(file, 1600);
-    const base64 = await fileToBase64(compressedFile);
-    const ext = compressedFile.name.split('.').pop().toLowerCase();
-    const mediaType = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[ext] || 'image/jpeg';
-    const dataUrl = base64.split(',')[1];
-    diag('图片大小: ' + (base64.length / 1024).toFixed(0) + 'KB (压缩后)');
-
-    let text;
-    if (provider === 'deepseek') {
-      text = await callDeepSeekOcr(apiKey, dataUrl, mediaType);
-    } else if (provider === 'gemini') {
-      text = await callGeminiOcr(apiKey, dataUrl, mediaType);
-    } else if (provider === 'openai') {
-      text = await callOpenAiOcr(apiKey, dataUrl, mediaType);
-    } else if (provider === 'local') {
-      text = await callLocalOcr(file);
-    } else {
-      text = await callClaudeOcr(apiKey, dataUrl, mediaType);
-    }
-
-    // Parse JSON from response
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    let receipt;
-    if (jsonMatch) {
-      receipt = JSON.parse(jsonMatch[0]);
-    } else {
-      throw new Error('无法解析识别结果');
-    }
-
-    document.getElementById('ocrLoading').style.display = 'none';
-    fillOcrResult(receipt);
-    document.getElementById('ocrResult').style.display = 'block';
-    diag('OCR成功，已填充结果');
+    await processSingleOcr();
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
     document.getElementById('ocrLoading').style.display = 'none';
@@ -528,6 +519,67 @@ async function startOcr() {
       showToast('识别失败: ' + e.message, 'error');
     }
   }
+}
+
+async function startAllOcr() {
+  if (!currentOcrFiles.length) return;
+  syncProviderFromDropdown();
+  var apiKey = getApiKey();
+  if (!apiKey) {
+    showToast('请先在设置中配置 API Key', 'error');
+    return;
+  }
+  showToast('开始识别 ' + currentOcrFiles.length + ' 张图片...');
+  var successCount = 0;
+  for (var i = 0; i < currentOcrFiles.length; i++) {
+    showToast('正在识别第 ' + (i + 1) + '/' + currentOcrFiles.length + ' 张...');
+    currentOcrImageFile = currentOcrFiles[i];
+    try {
+      await processSingleOcr();
+      successCount++;
+    } catch (e) {
+      showToast('第 ' + (i + 1) + ' 张识别失败: ' + e.message, 'error');
+    }
+  }
+  if (successCount > 0) {
+    showToast('✓ ' + successCount + '/' + currentOcrFiles.length + ' 张识别完成', 'success');
+  }
+}
+
+async function processSingleOcr() {
+  var file = currentOcrImageFile;
+  if (!file) throw new Error('无文件');
+
+  var compressedFile = await compressImage(file, 1600);
+  var base64 = await fileToBase64(compressedFile);
+  var ext = compressedFile.name.split('.').pop().toLowerCase();
+  var mediaType = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[ext] || 'image/jpeg';
+  var dataUrl = base64.split(',')[1];
+  diag('图片大小: ' + (base64.length / 1024).toFixed(0) + 'KB');
+
+  var provider = getProvider();
+  var apiKey = getApiKey();
+  var text;
+  if (provider === 'deepseek') {
+    text = await callDeepSeekOcr(apiKey, dataUrl, mediaType);
+  } else if (provider === 'gemini') {
+    text = await callGeminiOcr(apiKey, dataUrl, mediaType);
+  } else if (provider === 'openai') {
+    text = await callOpenAiOcr(apiKey, dataUrl, mediaType);
+  } else if (provider === 'local') {
+    text = await callLocalOcr(file);
+  } else {
+    text = await callClaudeOcr(apiKey, dataUrl, mediaType);
+  }
+
+  var jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('无法解析识别结果');
+  var receipt = JSON.parse(jsonMatch[0]);
+
+  document.getElementById('ocrLoading').style.display = 'none';
+  fillOcrResult(receipt);
+  document.getElementById('ocrResult').style.display = 'block';
+  diag('OCR成功');
 }
 
 async function callClaudeOcr(apiKey, dataUrl, mediaType) {
@@ -927,8 +979,24 @@ function fillOcrResult(receipt) {
   setFieldWithUncertainty('ocrSubtotal', receipt.subtotal || 0, isUncertain('subtotal'), getQ('subtotal'));
   setFieldWithUncertainty('ocrDiscount', receipt.discount_amount || 0, isUncertain('discount_amount'), getQ('discount_amount'));
   setFieldWithUncertainty('ocrTax', receipt.tax_amount || 0, isUncertain('tax_amount'), getQ('tax_amount'));
-  setFieldWithUncertainty('ocrPayment', receipt.payment_method || '', isUncertain('payment_method'), getQ('payment_method'));
-  document.getElementById('ocrNotes').value = '';
+  // Set payment method - try to match dropdown value, add option if no match
+  const paymentEl = document.getElementById('ocrPayment');
+  var paymentMethod = receipt.payment_method || '';
+  var paymentMatched = false;
+  for (var pi = 0; pi < paymentEl.options.length; pi++) {
+    if (paymentEl.options[pi].value.toLowerCase() === paymentMethod.toLowerCase()) {
+      paymentEl.selectedIndex = pi;
+      paymentMatched = true;
+      break;
+    }
+  }
+  if (paymentMethod && !paymentMatched) {
+    var opt = document.createElement('option');
+    opt.value = paymentMethod;
+    opt.textContent = paymentMethod;
+    paymentEl.appendChild(opt);
+    paymentEl.value = paymentMethod;
+  }
 
   const container = document.getElementById('ocrItems');
   container.innerHTML = '';
@@ -942,6 +1010,18 @@ function fillOcrResult(receipt) {
     });
   });
   recalcTotal();
+}
+
+function onReviewToggle() {
+  var cb = document.getElementById('ocrNeedsReview');
+  var btn = document.getElementById('ocrSaveBtn');
+  if (cb && cb.checked) {
+    btn.style.border = '2px solid #F59E0B';
+    btn.textContent = '⚠️ 标记待修改并保存';
+  } else {
+    btn.style.border = '';
+    btn.textContent = '✓ 确认保存';
+  }
 }
 
 function setFieldWithUncertainty(id, value, uncertain, question) {
@@ -969,51 +1049,77 @@ function setFieldWithUncertainty(id, value, uncertain, question) {
   }
 }
 
+var unitOptions = ['个','件','只','盒','瓶','包','双','条','箱','份','杯','袋','罐','箱','打','板'];
+var currencyMap = { EUR:'€', USD:'$', GBP:'£', CNY:'¥', other:'¤' };
+
+function getCurrencySymbol() {
+  var c = document.getElementById('ocrCurrency');
+  return c ? (currencyMap[c.value] || '€') : '€';
+}
+
 function addItemRow(item, opts) {
-  const container = document.getElementById('ocrItems');
-  const name = item ? item.name || '' : '';
-  const qty = item ? item.quantity || 1 : 1;
-  const price = item ? item.total_price || 0 : 0;
-  const cat = item ? item.category_name || '其他' : '其他';
-  const nameUncertain = opts && opts.nameUncertain;
-  const priceUncertain = opts && opts.priceUncertain;
-  const nameQ = (opts && opts.nameQ) || '';
-  const priceQ = (opts && opts.priceQ) || '';
+  var container = document.getElementById('ocrItems');
+  var name = item ? item.name || '' : '';
+  var qty = item ? item.quantity || 1 : 1;
+  var price = item ? item.total_price || 0 : 0;
+  var cat = item ? item.category_name || '其他' : '其他';
+  var unit = (item && item.unit) || '个';
+  var nameUncertain = opts && opts.nameUncertain;
+  var priceUncertain = opts && opts.priceUncertain;
+  var nameQ = (opts && opts.nameQ) || '';
+  var priceQ = (opts && opts.priceQ) || '';
 
-  const nameStyle = nameUncertain ? 'border-color:#F59E0B;background:#FFFBEB;' : '';
-  const priceStyle = priceUncertain ? 'border-color:#F59E0B;background:#FFFBEB;' : '';
-  const nameTitle = nameUncertain && nameQ ? `title="${esc(nameQ)}"` : '';
-  const priceTitle = priceUncertain && priceQ ? `title="${esc(priceQ)}"` : '';
+  var nameStyle = nameUncertain ? 'border-color:#F59E0B;background:#FFFBEB;' : '';
+  var priceStyle = priceUncertain ? 'border-color:#F59E0B;background:#FFFBEB;' : '';
+  var nameTitle = nameUncertain && nameQ ? 'title="' + esc(nameQ) + '"' : '';
+  var priceTitle = priceUncertain && priceQ ? 'title="' + esc(priceQ) + '"' : '';
 
-  const nameMarker = nameUncertain ? `<span style="color:#D97706;font-size:12px;cursor:help;" ${nameTitle}>⚠️</span>` : '';
-  const priceMarker = priceUncertain ? `<span style="color:#D97706;font-size:12px;cursor:help;" ${priceTitle}>⚠️</span>` : '';
+  var nameMarker = nameUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + nameTitle + '>⚠️</span>' : '';
+  var priceMarker = priceUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + priceTitle + '>⚠️</span>' : '';
 
-  const div = document.createElement('div');
+  var unitHtml = '<select class="ie-unit" onchange="recalcTotal()">';
+  for (var ui = 0; ui < unitOptions.length; ui++) {
+    unitHtml += '<option value="' + unitOptions[ui] + '" ' + (unit === unitOptions[ui] ? 'selected' : '') + '>' + unitOptions[ui] + '</option>';
+  }
+  unitHtml += '</select>';
+
+  var catHtml = '<select class="ie-cat" onchange="recalcTotal()">';
+  var cats = ['餐饮美食','超市购物','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  for (var ci = 0; ci < cats.length; ci++) {
+    catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
+  }
+  catHtml += '</select>';
+
+  var div = document.createElement('div');
   div.className = 'item-editor-row';
-  div.innerHTML = `
-    <div style="display:flex;align-items:center;gap:4px;">
-      <input type="text" placeholder="商品名称" value="${esc(name)}" onchange="recalcTotal()" class="ie-name" style="${nameStyle}flex:1;">
-      ${nameMarker}
-    </div>
-    <input type="number" placeholder="数量" value="${qty}" min="1" step="1" onchange="recalcTotal()" class="ie-qty" style="width:50px">
-    <div style="display:flex;align-items:center;gap:4px;">
-      <input type="number" placeholder="金额" value="${price}" step="0.01" onchange="recalcTotal()" class="ie-price" style="${priceStyle}width:60px;">
-      ${priceMarker}
-    </div>
-    <select class="ie-cat" onchange="recalcTotal()">
-      <option value="餐饮美食" ${cat === '餐饮美食' ? 'selected' : ''}>餐饮美食</option>
-      <option value="超市购物" ${cat === '超市购物' ? 'selected' : ''}>超市购物</option>
-      <option value="交通出行" ${cat === '交通出行' ? 'selected' : ''}>交通出行</option>
-      <option value="日用百货" ${cat === '日用百货' ? 'selected' : ''}>日用百货</option>
-      <option value="数码电子" ${cat === '数码电子' ? 'selected' : ''}>数码电子</option>
-      <option value="服饰美妆" ${cat === '服饰美妆' ? 'selected' : ''}>服饰美妆</option>
-      <option value="医疗健康" ${cat === '医疗健康' ? 'selected' : ''}>医疗健康</option>
-      <option value="休闲娱乐" ${cat === '休闲娱乐' ? 'selected' : ''}>休闲娱乐</option>
-      <option value="其他" ${cat === '其他' || !cat ? 'selected' : ''}>其他</option>
-    </select>
-    <button class="remove-item" onclick="this.parentElement.remove();recalcTotal()">×</button>
-  `;
+  div.innerHTML = [
+    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="recalcTotal()" onfocus="showItemDetail(this)" class="ie-name" style="' + nameStyle + '">',
+    nameMarker,
+    '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="recalcTotal()" class="ie-qty">',
+    unitHtml,
+    '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="recalcTotal()" class="ie-price" style="' + priceStyle + '">',
+    priceMarker,
+    catHtml,
+    '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>'
+  ].join('');
   container.appendChild(div);
+}
+
+function showItemDetail(el) {
+  var val = el.value.trim();
+  if (!val || val.length < 2) return;
+  // Show tooltip with English/Chinese info
+  var tip = document.createElement('div');
+  tip.style.cssText = 'position:fixed;bottom:60px;left:10px;right:10px;background:#1F2937;color:white;padding:12px 16px;border-radius:10px;font-size:13px;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,0.3);line-height:1.5;';
+  tip.innerHTML = [
+    '<div style="font-weight:600;margin-bottom:4px;">商品：' + esc(val) + '</div>',
+    '<div style="opacity:0.8;">名称不可编辑时，可在此修改</div>',
+    '<div style="margin-top:6px;display:flex;gap:8px;">',
+    '<button onclick="this.parentElement.parentElement.remove()" style="flex:1;padding:6px;border:none;border-radius:6px;background:#4F46E5;color:white;font-size:13px;">知道了</button>',
+    '</div>'
+  ].join('');
+  document.body.appendChild(tip);
+  setTimeout(function() { if (tip.parentNode) tip.remove(); }, 4000);
 }
 
 function recalcTotal() {
@@ -1023,27 +1129,46 @@ function recalcTotal() {
   const subtotal = parseFloat(document.getElementById('ocrSubtotal').value) || 0;
   const discount = parseFloat(document.getElementById('ocrDiscount').value) || 0;
   const tax = parseFloat(document.getElementById('ocrTax').value) || 0;
+  var symbol = getCurrencySymbol();
+  document.getElementById('ocrCurrencySymbol').textContent = symbol;
   document.getElementById('ocrTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
 }
 
 async function saveOcrReceipt() {
+  const btn = document.getElementById('ocrSaveBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 保存中...';
+
   const rows = document.querySelectorAll('#ocrItems .item-editor-row');
   const items = [];
   rows.forEach(row => {
     const name = row.querySelector('.ie-name').value.trim();
     if (!name) return;
-    items.push({ name, quantity: parseFloat(row.querySelector('.ie-qty').value) || 1, unit_price: parseFloat(row.querySelector('.ie-price').value) || 0, total_price: parseFloat(row.querySelector('.ie-price').value) || 0, category_name: row.querySelector('.ie-cat').value || '其他' });
+    items.push({
+      name,
+      quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
+      unit_price: parseFloat(row.querySelector('.ie-price').value) || 0,
+      total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
+      category_name: row.querySelector('.ie-cat').value || '其他',
+      unit: row.querySelector('.ie-unit').value || '个'
+    });
   });
 
-  if (!items.length) { showToast('请至少添加一个商品', 'error'); return; }
+  if (!items.length) {
+    showToast('请至少添加一个商品', 'error');
+    btn.disabled = false;
+    btn.textContent = '✓ 确认保存';
+    return;
+  }
 
   const discount = parseFloat(document.getElementById('ocrDiscount').value) || 0;
   const tax = parseFloat(document.getElementById('ocrTax').value) || 0;
   const subtotal = parseFloat(document.getElementById('ocrSubtotal').value) || 0;
   const itemTotal = items.reduce((s, i) => s + i.total_price, 0);
+  const currency = document.getElementById('ocrCurrency').value;
+  const needsReview = document.getElementById('ocrNeedsReview').checked;
 
   try {
-    // Upload image to Supabase Storage first
     let imageUrl = '';
     if (currentOcrImageFile) {
       try {
@@ -1055,24 +1180,23 @@ async function saveOcrReceipt() {
       }
     }
 
-    // Save receipt
     const receiptData = {
       store_name: document.getElementById('ocrStore').value.trim(),
       receipt_date: document.getElementById('ocrDate').value,
       receipt_time: document.getElementById('ocrTime').value,
-      total_amount: (subtotal || itemTotal) + discount + tax,
+      total_amount: Math.max(0, (subtotal || itemTotal) + discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
-      payment_method: document.getElementById('ocrPayment').value.trim(),
-      notes: document.getElementById('ocrNotes').value.trim(),
+      payment_method: document.getElementById('ocrPayment').value,
+      currency: currency,
+      notes: needsReview ? '需后续修改' : '',
       image_url: imageUrl,
     };
 
     const receipts = await sbPost('receipts', receiptData);
     const receiptId = receipts[0].id;
 
-    // Save items
     const itemRows = items.map((item, idx) => ({
       receipt_id: receiptId,
       name: item.name,
@@ -1080,6 +1204,7 @@ async function saveOcrReceipt() {
       unit_price: item.unit_price,
       total_price: item.total_price,
       category_name: item.category_name,
+      unit: item.unit,
       sort_order: idx,
     }));
     await sbPost('receipt_items', itemRows);
@@ -1089,6 +1214,8 @@ async function saveOcrReceipt() {
     switchTab('list');
   } catch (e) {
     showToast('保存失败: ' + e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = '✓ 确认保存';
   }
 }
 
@@ -1100,35 +1227,43 @@ function retakePhoto() {
     <div class="upload-icon">📸</div>
     <div class="upload-text">点击拍照或选择图片</div>
     <div class="upload-hint">支持 JPG / PNG 格式</div>
-    <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleFileSelect(event)">
   `;
   area.classList.remove('has-image');
+  area.style.cssText = '';
   currentOcrImageFile = null;
+  currentOcrFiles = [];
 }
 
 // ======================== MANUAL ENTRY ========================
-function addManualItemRow() {
+function addManualItemRow(item) {
   const container = document.getElementById('manualItems');
-  const div = document.createElement('div');
+  var name = item ? item.name || '' : '';
+  var qty = item ? item.quantity || 1 : 1;
+  var price = item ? item.total_price || 0 : 0;
+  var cat = item ? item.category_name || '其他' : '其他';
+  var unit = (item && item.unit) || '个';
+  var div = document.createElement('div');
   div.className = 'item-editor-row';
-  div.innerHTML = `
-    <input type="text" placeholder="商品名称" onchange="calcManualTotal()" class="ie-name">
-    <input type="number" placeholder="数量" value="1" min="1" step="1" onchange="calcManualTotal()" class="ie-qty" style="width:50px">
-    <input type="number" placeholder="金额" step="0.01" onchange="calcManualTotal()" class="ie-price" style="width:70px">
-    <select class="ie-cat" onchange="calcManualTotal()">
-      <option value="">分类</option>
-      <option value="餐饮美食">餐饮美食</option>
-      <option value="超市购物">超市购物</option>
-      <option value="交通出行">交通出行</option>
-      <option value="日用百货">日用百货</option>
-      <option value="数码电子">数码电子</option>
-      <option value="服饰美妆">服饰美妆</option>
-      <option value="医疗健康">医疗健康</option>
-      <option value="休闲娱乐">休闲娱乐</option>
-      <option value="其他" selected>其他</option>
-    </select>
-    <button class="remove-item" onclick="this.parentElement.remove();calcManualTotal()">×</button>
-  `;
+  var unitHtml = '<select class="ie-unit" onchange="calcManualTotal()">';
+  for (var ui = 0; ui < unitOptions.length; ui++) {
+    unitHtml += '<option value="' + unitOptions[ui] + '" ' + (unit === unitOptions[ui] ? 'selected' : '') + '>' + unitOptions[ui] + '</option>';
+  }
+  unitHtml += '</select>';
+  var catHtml = '<select class="ie-cat" onchange="calcManualTotal()">';
+  var cats = ['餐饮美食','超市购物','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  for (var ci = 0; ci < cats.length; ci++) {
+    catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
+  }
+  catHtml += '</select>';
+  div.innerHTML = [
+    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="calcManualTotal()" class="ie-name">',
+    '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="calcManualTotal()" class="ie-qty">',
+    unitHtml,
+    '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="calcManualTotal()" class="ie-price">',
+    catHtml,
+    '<button class="remove-item" onclick="this.parentElement.remove();calcManualTotal()" title="删除此行">✕</button>'
+  ].join('');
   container.appendChild(div);
 }
 
@@ -1139,6 +1274,9 @@ function calcManualTotal() {
   const subtotal = parseFloat(document.getElementById('manualSubtotal').value) || 0;
   const discount = parseFloat(document.getElementById('manualDiscount').value) || 0;
   const tax = parseFloat(document.getElementById('manualTax').value) || 0;
+  var c = document.getElementById('manualCurrency');
+  var symbol = c ? (currencyMap[c.value] || '€') : '€';
+  document.getElementById('manualCurrencySymbol').textContent = symbol;
   document.getElementById('manualTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
 }
 
@@ -1148,7 +1286,13 @@ async function saveManualReceipt() {
   rows.forEach(row => {
     const name = row.querySelector('.ie-name').value.trim();
     if (!name) return;
-    items.push({ name, quantity: parseFloat(row.querySelector('.ie-qty').value) || 1, total_price: parseFloat(row.querySelector('.ie-price').value) || 0, category_name: row.querySelector('.ie-cat').value || '其他' });
+    items.push({
+      name,
+      quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
+      total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
+      category_name: row.querySelector('.ie-cat').value || '其他',
+      unit: row.querySelector('.ie-unit').value || '个'
+    });
   });
 
   if (!items.length) { showToast('请至少添加一个商品', 'error'); return; }
@@ -1163,11 +1307,12 @@ async function saveManualReceipt() {
       store_name: document.getElementById('manualStore').value.trim(),
       receipt_date: document.getElementById('manualDate').value,
       receipt_time: document.getElementById('manualTime').value,
-      total_amount: (subtotal || itemTotal) + discount + tax,
+      total_amount: Math.max(0, (subtotal || itemTotal) + discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
-      payment_method: document.getElementById('manualPayment').value.trim(),
+      payment_method: document.getElementById('manualPayment').value,
+      currency: document.getElementById('manualCurrency').value,
       notes: document.getElementById('manualNotes').value.trim(),
     };
 
@@ -1177,12 +1322,13 @@ async function saveManualReceipt() {
     const itemRows = items.map((item, idx) => ({
       receipt_id: receiptId, name: item.name, quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
-      category_name: item.category_name, sort_order: idx
+      category_name: item.category_name, unit: item.unit, sort_order: idx
     }));
     await sbPost('receipt_items', itemRows);
 
     showToast('✓ 账单已保存', 'success');
     document.getElementById('manualStore').value = '';
+    document.getElementById('manualDate').value = new Date().toISOString().split('T')[0];
     document.getElementById('manualTime').value = '';
     document.getElementById('manualSubtotal').value = '';
     document.getElementById('manualDiscount').value = '';
@@ -1238,7 +1384,7 @@ async function loadReceiptList(page) {
       <div class="receipt-card" onclick="showReceiptDetail(${r.id})">
         <div class="rc-header">
           <div class="rc-store">${esc(r.store_name || '未知商家')}</div>
-          <div class="rc-total">¥${Number(r.total_amount).toFixed(2)}</div>
+          <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
         </div>
         <div class="rc-meta">
           <span>${r.receipt_date || ''}</span>
@@ -1266,6 +1412,7 @@ async function showReceiptDetail(id) {
     const data = await sbGet('receipts', '?select=*,receipt_items(*)&id=eq.' + id);
     if (!data.length) { showToast('账单不存在', 'error'); return; }
     const r = data[0];
+    var curSym = currencyMap[r.currency] || '€';
 
     const container = document.getElementById('detailContent');
     const imgHtml = r.image_url ? `<img src="${r.image_url}" style="max-width:100%;border-radius:8px;margin-bottom:12px;" alt="receipt">` : '';
@@ -1274,14 +1421,14 @@ async function showReceiptDetail(id) {
       <div class="detail-header">
         <div class="store-name">${esc(r.store_name || '未知商家')}</div>
         <div class="store-date">${r.receipt_date || ''} ${r.receipt_time || ''}</div>
-        <div class="total-amount">¥${Number(r.total_amount).toFixed(2)}</div>
+        <div class="total-amount">${curSym}${Number(r.total_amount).toFixed(2)}</div>
       </div>
       <div class="card">
         <div class="detail-section">
           <h3>🛒 商品明细</h3>
           <ul class="item-list">
             ${(r.receipt_items || []).map(i => `
-              <li><span class="item-name">${esc(i.name)}</span><span class="item-qty">×${i.quantity}</span><span class="item-price">¥${Number(i.total_price).toFixed(2)}</span></li>
+              <li><span class="item-name">${esc(i.name)}</span><span class="item-qty">×${i.quantity}${i.unit ? i.unit : ''}</span><span class="item-price">${curSym}${Number(i.total_price).toFixed(2)}</span></li>
             `).join('')}
           </ul>
         </div>
@@ -1290,9 +1437,9 @@ async function showReceiptDetail(id) {
         <div class="detail-section">
           <h3>📄 详细信息</h3>
           <div class="detail-grid">
-            <div class="dg-item"><div class="dg-label">小计</div><div class="dg-value">¥${Number(r.subtotal || 0).toFixed(2)}</div></div>
-            <div class="dg-item"><div class="dg-label">折扣</div><div class="dg-value">${r.discount_amount ? '¥' + Number(r.discount_amount).toFixed(2) : '-'}</div></div>
-            <div class="dg-item"><div class="dg-label">税费</div><div class="dg-value">${r.tax_amount ? '¥' + Number(r.tax_amount).toFixed(2) : '-'}</div></div>
+            <div class="dg-item"><div class="dg-label">小计</div><div class="dg-value">${curSym}${Number(r.subtotal || 0).toFixed(2)}</div></div>
+            <div class="dg-item"><div class="dg-label">折扣</div><div class="dg-value">${r.discount_amount ? curSym + Number(r.discount_amount).toFixed(2) : '-'}</div></div>
+            <div class="dg-item"><div class="dg-label">税费</div><div class="dg-value">${r.tax_amount ? curSym + Number(r.tax_amount).toFixed(2) : '-'}</div></div>
             <div class="dg-item"><div class="dg-label">支付方式</div><div class="dg-value">${esc(r.payment_method) || '-'}</div></div>
           </div>
           ${r.notes ? `<div style="margin-top:8px;"><div class="dg-label">备注</div><div class="dg-value">${esc(r.notes)}</div></div>` : ''}
@@ -1335,6 +1482,7 @@ async function editReceipt(id) {
     const data = await sbGet('receipts', '?select=*,receipt_items(*)&id=eq.' + id);
     if (!data.length) return;
     const r = data[0];
+    var curSymbol = currencyMap[r.currency] || '€';
 
     const container = document.getElementById('editContent');
     container.innerHTML = `
@@ -1347,15 +1495,39 @@ async function editReceipt(id) {
       <div class="card-title">🛒 商品明细</div>
       <div id="editItems"></div>
       <button class="btn btn-sm btn-outline btn-block" onclick="addEditItemRow()" style="margin-bottom:12px;">+ 添加商品</button>
-      <div class="form-row">
-        <div class="form-group"><label>小计</label><input type="number" id="editSubtotal" step="0.01" value="${r.subtotal || 0}" onchange="calcEditTotal()"></div>
-        <div class="form-group"><label>折扣</label><input type="number" id="editDiscount" step="0.01" value="${r.discount_amount || 0}" onchange="calcEditTotal()"></div>
+      <div class="form-row-sm">
+        <div class="form-group"><label>小计</label><input type="number" id="editSubtotal" step="0.01" value="${r.subtotal || 0}" onchange="calcEditTotal()" style="font-size:13px;padding:6px 8px;"></div>
+        <div class="form-group"><label>折扣</label><input type="number" id="editDiscount" step="0.01" value="${r.discount_amount || 0}" onchange="calcEditTotal()" style="font-size:13px;padding:6px 8px;"></div>
+        <div class="form-group"><label>税费</label><input type="number" id="editTax" step="0.01" value="${r.tax_amount || 0}" onchange="calcEditTotal()" style="font-size:13px;padding:6px 8px;"></div>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>税费</label><input type="number" id="editTax" step="0.01" value="${r.tax_amount || 0}" onchange="calcEditTotal()"></div>
-        <div class="form-group"><label>支付方式</label><input id="editPayment" value="${esc(r.payment_method || '')}"></div>
+      <div class="currency-payment-row">
+        <div class="form-group"><label>货币</label>
+          <select id="editCurrency" onchange="calcEditTotal()" style="font-size:13px;padding:8px;">
+            <option value="EUR" ${(r.currency||'EUR')==='EUR'?'selected':''}>€ 欧元 EUR</option>
+            <option value="USD" ${r.currency==='USD'?'selected':''}>$ 美元 USD</option>
+            <option value="GBP" ${r.currency==='GBP'?'selected':''}>£ 英镑 GBP</option>
+            <option value="CNY" ${r.currency==='CNY'?'selected':''}>¥ 人民币 CNY</option>
+            <option value="other" ${r.currency==='other'?'selected':''}>其他</option>
+          </select>
+        </div>
+        <div class="form-group"><label>支付方式</label>
+          <select id="editPayment" style="font-size:13px;padding:8px;">
+            <option value="">请选择</option>
+            <option value="Visa" ${r.payment_method==='Visa'?'selected':''}>Visa</option>
+            <option value="Mastercard" ${r.payment_method==='Mastercard'?'selected':''}>Mastercard</option>
+            <option value="American Express" ${r.payment_method==='American Express'?'selected':''}>American Express</option>
+            <option value="Debit Card" ${r.payment_method==='Debit Card'?'selected':''}>Debit Card</option>
+            <option value="现金 Cash" ${r.payment_method==='现金 Cash'?'selected':''}>现金 Cash</option>
+            <option value="微信支付" ${r.payment_method==='微信支付'?'selected':''}>微信支付</option>
+            <option value="支付宝" ${r.payment_method==='支付宝'?'selected':''}>支付宝</option>
+            <option value="Gift Card" ${r.payment_method==='Gift Card'?'selected':''}>Gift Card</option>
+            <option value="其他 Other" ${r.payment_method==='其他 Other'?'selected':''}>其他</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group"><label>备注</label><input id="editNotes" value="${esc(r.notes || '')}"></div>
+      <div class="form-group" style="margin-top:4px;">
+        <label style="font-size:16px;font-weight:600;"><span id="editCurrencySymbol">${curSymbol}</span> <span id="editTotalDisplay">${Number(r.total_amount || 0).toFixed(2)}</span></label>
+      </div>
       <button class="btn btn-success btn-lg btn-block" onclick="saveEditReceipt(${r.id})">✓ 保存修改</button>
     `;
 
@@ -1375,29 +1547,32 @@ async function editReceipt(id) {
 
 function addEditItemRow(item) {
   const container = document.getElementById('editItems');
-  const name = item ? item.name || '' : '';
-  const qty = item ? item.quantity || 1 : 1;
-  const price = item ? item.total_price || 0 : 0;
-  const cat = item ? item.category_name || '其他' : '其他';
-  const div = document.createElement('div');
+  var name = item ? item.name || '' : '';
+  var qty = item ? item.quantity || 1 : 1;
+  var price = item ? item.total_price || 0 : 0;
+  var cat = item ? item.category_name || '其他' : '其他';
+  var unit = (item && item.unit) || '个';
+  var div = document.createElement('div');
   div.className = 'item-editor-row';
-  div.innerHTML = `
-    <input type="text" placeholder="商品名称" value="${esc(name)}" onchange="calcEditTotal()" class="ie-name">
-    <input type="number" placeholder="数量" value="${qty}" min="1" step="1" onchange="calcEditTotal()" class="ie-qty" style="width:50px">
-    <input type="number" placeholder="金额" value="${price}" step="0.01" onchange="calcEditTotal()" class="ie-price" style="width:70px">
-    <select class="ie-cat" onchange="calcEditTotal()">
-      <option value="餐饮美食" ${cat === '餐饮美食' ? 'selected' : ''}>餐饮美食</option>
-      <option value="超市购物" ${cat === '超市购物' ? 'selected' : ''}>超市购物</option>
-      <option value="交通出行" ${cat === '交通出行' ? 'selected' : ''}>交通出行</option>
-      <option value="日用百货" ${cat === '日用百货' ? 'selected' : ''}>日用百货</option>
-      <option value="数码电子" ${cat === '数码电子' ? 'selected' : ''}>数码电子</option>
-      <option value="服饰美妆" ${cat === '服饰美妆' ? 'selected' : ''}>服饰美妆</option>
-      <option value="医疗健康" ${cat === '医疗健康' ? 'selected' : ''}>医疗健康</option>
-      <option value="休闲娱乐" ${cat === '休闲娱乐' ? 'selected' : ''}>休闲娱乐</option>
-      <option value="其他" ${cat === '其他' || !cat ? 'selected' : ''}>其他</option>
-    </select>
-    <button class="remove-item" onclick="this.parentElement.remove();calcEditTotal()">×</button>
-  `;
+  var unitHtml = '<select class="ie-unit" onchange="calcEditTotal()">';
+  for (var ui = 0; ui < unitOptions.length; ui++) {
+    unitHtml += '<option value="' + unitOptions[ui] + '" ' + (unit === unitOptions[ui] ? 'selected' : '') + '>' + unitOptions[ui] + '</option>';
+  }
+  unitHtml += '</select>';
+  var catHtml = '<select class="ie-cat" onchange="calcEditTotal()">';
+  var cats = ['餐饮美食','超市购物','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  for (var ci = 0; ci < cats.length; ci++) {
+    catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
+  }
+  catHtml += '</select>';
+  div.innerHTML = [
+    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="calcEditTotal()" class="ie-name">',
+    '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="calcEditTotal()" class="ie-qty">',
+    unitHtml,
+    '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="calcEditTotal()" class="ie-price">',
+    catHtml,
+    '<button class="remove-item" onclick="this.parentElement.remove();calcEditTotal()" title="删除此行">✕</button>'
+  ].join('');
   container.appendChild(div);
 }
 
@@ -1408,7 +1583,10 @@ function calcEditTotal() {
   const subtotal = parseFloat(document.getElementById('editSubtotal').value) || 0;
   const discount = parseFloat(document.getElementById('editDiscount').value) || 0;
   const tax = parseFloat(document.getElementById('editTax').value) || 0;
-  document.getElementById('editTotalDisplay').textContent = ((subtotal || total) + discount + tax).toFixed(2);
+  var c = document.getElementById('editCurrency');
+  var symbol = c ? (currencyMap[c.value] || '€') : '€';
+  document.getElementById('editCurrencySymbol').textContent = symbol;
+  document.getElementById('editTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
 }
 
 async function saveEditReceipt(id) {
@@ -1417,7 +1595,12 @@ async function saveEditReceipt(id) {
   rows.forEach(row => {
     const name = row.querySelector('.ie-name').value.trim();
     if (!name) return;
-    items.push({ name, quantity: parseFloat(row.querySelector('.ie-qty').value) || 1, total_price: parseFloat(row.querySelector('.ie-price').value) || 0, category_name: row.querySelector('.ie-cat').value || '其他' });
+    items.push({
+      name, quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
+      total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
+      category_name: row.querySelector('.ie-cat').value || '其他',
+      unit: row.querySelector('.ie-unit').value || '个'
+    });
   });
 
   const discount = parseFloat(document.getElementById('editDiscount').value) || 0;
@@ -1430,12 +1613,12 @@ async function saveEditReceipt(id) {
       store_name: document.getElementById('editStore').value.trim(),
       receipt_date: document.getElementById('editDate').value,
       receipt_time: document.getElementById('editTime').value,
-      total_amount: (subtotal || itemTotal) + discount + tax,
+      total_amount: Math.max(0, (subtotal || itemTotal) + discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
-      payment_method: document.getElementById('editPayment').value.trim(),
-      notes: document.getElementById('editNotes').value.trim(),
+      payment_method: document.getElementById('editPayment').value,
+      currency: document.getElementById('editCurrency').value,
     }, '?id=eq.' + id);
 
     // Replace items
@@ -1443,7 +1626,7 @@ async function saveEditReceipt(id) {
     const itemRows = items.map((item, idx) => ({
       receipt_id: id, name: item.name, quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
-      category_name: item.category_name, sort_order: idx
+      category_name: item.category_name, unit: item.unit, sort_order: idx
     }));
     if (itemRows.length) await sbPost('receipt_items', itemRows);
 

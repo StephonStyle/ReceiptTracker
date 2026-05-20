@@ -100,6 +100,11 @@ body {
   margin: 0 auto;
 }
 .page.active { display: block; }
+.page.active body { overflow: hidden; }
+
+/* Prevent OCR result page from scrolling */
+#page-add.active { overflow: hidden; touch-action: none; }
+#page-add .receipt-review { max-height: calc(100vh - 200px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ===== Cards ===== */
 .card {
@@ -482,21 +487,30 @@ body {
 /* Item editor inline */
 .item-editor-row {
   display: grid;
-  grid-template-columns: 3fr 1fr 1.2fr 1.2fr auto;
-  gap: 6px;
+  grid-template-columns: 2fr 0.7fr 0.7fr 1fr 1.1fr auto;
+  gap: 4px;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
-.item-editor-row input {
-  padding: 6px 8px;
+.item-editor-row input, .item-editor-row select {
+  padding: 5px 6px;
   border: 1.5px solid var(--gray-200);
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
+  background: white;
+  font-family: inherit;
+  min-width: 0;
+  width: 100%;
 }
-.item-editor-row input:focus {
+.item-editor-row input:focus, .item-editor-row select:focus {
   outline: none;
   border-color: var(--primary);
 }
+.item-editor-row .ie-qty { width: 100%; text-align: center; }
+.item-editor-row .ie-unit { width: 100%; padding: 5px 2px !important; }
+.item-editor-row .ie-price { width: 100%; }
+.item-editor-row .ie-cat { width: 100%; font-size: 11px !important; padding: 5px 2px !important; }
+
 /* Uncertain field markers */
 input[style*="border-color: #F59E0B"]::placeholder { color: #D97706; }
 .uncertain-marker { animation: pulse-warning 1.5s ease-in-out infinite; }
@@ -505,8 +519,17 @@ input[style*="border-color: #F59E0B"]::placeholder { color: #D97706; }
 .item-editor-row .remove-item {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: 18px;
   cursor: pointer;
   color: var(--danger);
-  padding: 4px;
+  padding: 4px 2px;
+  line-height: 1;
+  opacity: 0.7;
 }
+.item-editor-row .remove-item:hover { opacity: 1; }
+
+/* Form row for totals - tighter */
+.form-row-sm { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+
+/* Currency & payment row */
+.currency-payment-row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }

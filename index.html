@@ -50,7 +50,7 @@
     <div class="upload-icon">📸</div>
     <div class="upload-text">点击拍照或选择图片</div>
     <div class="upload-hint">支持 JPG / PNG 格式</div>
-    <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+    <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleFileSelect(event)">
   </div>
 
   <div id="ocrLoading" class="loading" style="display:none">
@@ -72,32 +72,59 @@
         <label>商家名称</label>
         <input id="ocrStore" onchange="recalcTotal()">
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>日期</label><input type="date" id="ocrDate" onchange="recalcTotal()"></div>
-        <div class="form-group"><label>时间</label><input type="time" id="ocrTime" onchange="recalcTotal()"></div>
+      <div class="form-row" style="grid-template-columns:1fr 0.8fr;">
+        <div class="form-group"><label>日期</label><input type="date" id="ocrDate" onchange="recalcTotal()" style="font-size:13px;padding:8px;"></div>
+        <div class="form-group"><label>时间</label><input type="time" id="ocrTime" onchange="recalcTotal()" style="font-size:13px;padding:8px;"></div>
       </div>
 
       <div class="card-title" style="margin-top:12px;">🛒 商品明细</div>
       <div id="ocrItems"></div>
       <button class="btn btn-sm btn-outline btn-block" onclick="addItemRow()" style="margin-top:8px;">+ 添加商品</button>
 
-      <div class="form-row" style="margin-top:12px;">
-        <div class="form-group"><label>小计</label><input type="number" id="ocrSubtotal" step="0.01" onchange="recalcTotal()"></div>
-        <div class="form-group"><label>折扣</label><input type="number" id="ocrDiscount" step="0.01" onchange="recalcTotal()"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>税费</label><input type="number" id="ocrTax" step="0.01" onchange="recalcTotal()"></div>
-        <div class="form-group"><label>支付方式</label><input id="ocrPayment" placeholder="微信支付/支付宝/现金"></div>
-      </div>
-      <div class="form-group">
-        <label>备注</label>
-        <input id="ocrNotes" placeholder="可选">
-      </div>
-      <div class="form-group">
-        <label style="font-size:16px;font-weight:600;">总计: ¥<span id="ocrTotalDisplay">0.00</span></label>
+      <div class="form-row-sm" style="margin-top:10px;">
+        <div class="form-group"><label>小计</label><input type="number" id="ocrSubtotal" step="0.01" onchange="recalcTotal()" style="font-size:13px;padding:6px 8px;"></div>
+        <div class="form-group"><label>折扣</label><input type="number" id="ocrDiscount" step="0.01" onchange="recalcTotal()" style="font-size:13px;padding:6px 8px;"></div>
+        <div class="form-group"><label>税费</label><input type="number" id="ocrTax" step="0.01" onchange="recalcTotal()" style="font-size:13px;padding:6px 8px;"></div>
       </div>
 
-      <button class="btn btn-success btn-lg btn-block" onclick="saveOcrReceipt()">✓ 确认保存</button>
+      <div class="currency-payment-row">
+        <div class="form-group"><label>货币</label>
+          <select id="ocrCurrency" onchange="recalcTotal()" style="font-size:13px;padding:8px;">
+            <option value="EUR">€ 欧元 EUR</option>
+            <option value="USD">$ 美元 USD</option>
+            <option value="GBP">£ 英镑 GBP</option>
+            <option value="CNY">¥ 人民币 CNY</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form-group"><label>支付方式</label>
+          <select id="ocrPayment" style="font-size:13px;padding:8px;">
+            <option value="">请选择</option>
+            <option value="Visa">Visa</option>
+            <option value="Mastercard">Mastercard</option>
+            <option value="American Express">American Express</option>
+            <option value="Debit Card">Debit Card</option>
+            <option value="现金 Cash">现金 Cash</option>
+            <option value="微信支付">微信支付</option>
+            <option value="支付宝">支付宝</option>
+            <option value="Gift Card">Gift Card</option>
+            <option value="其他 Other">其他</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;">
+        <label style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;">
+          <span>总计:</span>
+          <span id="ocrCurrencySymbol">€</span>
+          <span id="ocrTotalDisplay">0.00</span>
+        </label>
+        <label style="font-size:12px;color:var(--gray-500);display:flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="checkbox" id="ocrNeedsReview" onchange="onReviewToggle()"> 需后续修改
+        </label>
+      </div>
+
+      <button class="btn btn-success btn-lg btn-block" id="ocrSaveBtn" onclick="saveOcrReceipt()">✓ 确认保存</button>
     </div>
   </div>
 </div>
@@ -123,11 +150,35 @@
     </div>
     <div class="form-row">
       <div class="form-group"><label>税费</label><input type="number" id="manualTax" step="0.01" onchange="calcManualTotal()"></div>
-      <div class="form-group"><label>支付方式</label><input id="manualPayment" placeholder="微信支付"></div>
+      <div class="form-group"><label>支付方式</label>
+        <select id="manualPayment" style="font-size:13px;padding:8px;">
+          <option value="">请选择</option>
+          <option value="Visa">Visa</option>
+          <option value="Mastercard">Mastercard</option>
+          <option value="American Express">American Express</option>
+          <option value="Debit Card">Debit Card</option>
+          <option value="现金 Cash">现金 Cash</option>
+          <option value="微信支付">微信支付</option>
+          <option value="支付宝">支付宝</option>
+          <option value="Gift Card">Gift Card</option>
+          <option value="其他 Other">其他</option>
+        </select>
+      </div>
     </div>
-    <div class="form-group"><label>备注</label><input id="manualNotes"></div>
+    <div class="form-row">
+      <div class="form-group"><label>货币</label>
+        <select id="manualCurrency" onchange="calcManualTotal()" style="font-size:13px;padding:8px;">
+          <option value="EUR">€ 欧元 EUR</option>
+          <option value="USD">$ 美元 USD</option>
+          <option value="GBP">£ 英镑 GBP</option>
+          <option value="CNY">¥ 人民币 CNY</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="form-group"><label>备注</label><input id="manualNotes" placeholder="备注信息"></div>
+    </div>
     <div class="form-group">
-      <label style="font-size:16px;font-weight:600;">总计: ¥<span id="manualTotalDisplay">0.00</span></label>
+      <label style="font-size:16px;font-weight:600;"><span id="manualCurrencySymbol">€</span> <span id="manualTotalDisplay">0.00</span></label>
     </div>
 
     <button class="btn btn-success btn-lg btn-block" onclick="saveManualReceipt()">✓ 保存</button>
@@ -222,9 +273,9 @@
     <div class="form-group">
       <label>AI 服务商</label>
       <select id="aiProvider" onchange="onProviderChange()" style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;">
+        <option value="claude" selected>Claude API（需代理）</option>
         <option value="gemini">Google Gemini API</option>
         <option value="openai">OpenAI API（GPT-4o）</option>
-        <option value="claude">Claude API（需代理）</option>
         <option value="deepseek">DeepSeek API</option>
         <option value="local">本地识别（Tesseract.js，无需 API）</option>
       </select>
