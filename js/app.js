@@ -77,6 +77,14 @@ let currentOcrFiles = [];
 let listPage = 1;
 let editingReceiptId = null;
 
+var unitOptions = ['个','件','只','盒','瓶','包','双','条','箱','份','杯','袋','罐','箱','打','板'];
+var currencyMap = { EUR:'€', USD:'$', GBP:'£', CNY:'¥', other:'¤' };
+
+function getCurrencySymbol() {
+  var c = document.getElementById('ocrCurrency');
+  return c ? (currencyMap[c.value] || '€') : '€';
+}
+
 // ======================== INIT ========================
 if (typeof Chart === 'undefined') {
   document.getElementById('pageTitle').textContent = '⚠️ Chart.js 加载失败，请刷新重试';
@@ -444,17 +452,25 @@ async function testApiConnection() {
 
 // ======================== OCR UPLOAD ========================
 function handleFileSelect(event) {
-  const files = Array.from(event.target.files);
-  if (!files.length) return;
+  var newFiles = Array.from(event.target.files);
+  if (!newFiles.length) return;
 
-  currentOcrFiles = files;
-  currentOcrImageFile = files[0];
+  // Append to existing files
+  currentOcrFiles = currentOcrFiles.concat(newFiles);
+  currentOcrImageFile = currentOcrFiles[0];
 
-  // Show gallery of previews
+  // Reset file input so same file can be selected again
+  event.target.value = '';
+
   var area = document.getElementById('uploadArea');
   area.classList.add('has-image');
   area.style.cssText = 'border-style:solid;border-color:var(--success);padding:16px;';
 
+  renderUploadGallery(area);
+}
+
+function renderUploadGallery(area) {
+  var files = currentOcrFiles;
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px;">';
   var loadPromises = files.map(function(file, i) {
     return new Promise(function(resolve) {
@@ -475,8 +491,13 @@ function handleFileSelect(event) {
     html += '</div>';
     if (files.length > 1) {
       html += '<button class="btn btn-primary btn-lg btn-block" onclick="startAllOcr()" style="margin-bottom:6px;">🚀 全部识别 (' + files.length + '张)</button>';
+    } else {
+      html += '<button class="btn btn-primary btn-lg btn-block" onclick="startOcr()" style="margin-bottom:6px;">🚀 开始识别</button>';
     }
-    html += '<button class="btn btn-outline btn-block" onclick="retakePhoto()">重新选择</button>';
+    html += '<div style="display:flex;gap:8px;">';
+    html += '<button class="btn btn-outline" style="flex:1;" onclick="event.stopPropagation();document.getElementById(\'fileInput\').click()">📷 继续添加</button>';
+    html += '<button class="btn btn-outline" style="flex:1;" onclick="retakePhoto()">重新选择</button>';
+    html += '</div>';
     area.innerHTML = html;
   });
 }
@@ -1047,14 +1068,6 @@ function setFieldWithUncertainty(id, value, uncertain, question) {
   } else if (marker) {
     marker.remove();
   }
-}
-
-var unitOptions = ['个','件','只','盒','瓶','包','双','条','箱','份','杯','袋','罐','箱','打','板'];
-var currencyMap = { EUR:'€', USD:'$', GBP:'£', CNY:'¥', other:'¤' };
-
-function getCurrencySymbol() {
-  var c = document.getElementById('ocrCurrency');
-  return c ? (currencyMap[c.value] || '€') : '€';
 }
 
 function addItemRow(item, opts) {
