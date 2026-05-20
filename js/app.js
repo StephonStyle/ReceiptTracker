@@ -327,19 +327,24 @@ async function startOcr() {
     const mediaType = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[ext] || 'image/jpeg';
     const dataUrl = base64.split(',')[1];
 
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    // 通过代理调用 Claude API（浏览器不能直接调用 Anthropic API）
+    const PROXY_URL = localStorage.getItem('ocr_proxy_url') || 'https://receipt-tracker-api-kohl.vercel.app/api/anthropic';
+    const resp = await fetch(PROXY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: dataUrl } },
-            { type: 'text', text: getOcrPrompt() }
-          ]
-        }]
+        apiKey,
+        body: {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: dataUrl } },
+              { type: 'text', text: getOcrPrompt() }
+            ]
+          }]
+        }
       })
     });
 
