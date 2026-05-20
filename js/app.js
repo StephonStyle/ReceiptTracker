@@ -598,6 +598,7 @@ async function processSingleOcr() {
   var receipt = JSON.parse(jsonMatch[0]);
 
   document.getElementById('ocrLoading').style.display = 'none';
+  document.getElementById('uploadArea').style.display = 'none';
   fillOcrResult(receipt);
   document.getElementById('ocrResult').style.display = 'block';
   diag('OCR成功');
@@ -1106,7 +1107,7 @@ function addItemRow(item, opts) {
   var div = document.createElement('div');
   div.className = 'item-editor-row';
   div.innerHTML = [
-    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="recalcTotal()" onfocus="showItemDetail(this)" class="ie-name" style="' + nameStyle + '">',
+    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="recalcTotal()" class="ie-name" style="' + nameStyle + '">',
     nameMarker,
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="recalcTotal()" class="ie-qty">',
     unitHtml,
@@ -1118,30 +1119,15 @@ function addItemRow(item, opts) {
   container.appendChild(div);
 }
 
-function showItemDetail(el) {
-  var val = el.value.trim();
-  if (!val || val.length < 2) return;
-  // Show tooltip with English/Chinese info
-  var tip = document.createElement('div');
-  tip.style.cssText = 'position:fixed;bottom:60px;left:10px;right:10px;background:#1F2937;color:white;padding:12px 16px;border-radius:10px;font-size:13px;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,0.3);line-height:1.5;';
-  tip.innerHTML = [
-    '<div style="font-weight:600;margin-bottom:4px;">商品：' + esc(val) + '</div>',
-    '<div style="opacity:0.8;">名称不可编辑时，可在此修改</div>',
-    '<div style="margin-top:6px;display:flex;gap:8px;">',
-    '<button onclick="this.parentElement.parentElement.remove()" style="flex:1;padding:6px;border:none;border-radius:6px;background:#4F46E5;color:white;font-size:13px;">知道了</button>',
-    '</div>'
-  ].join('');
-  document.body.appendChild(tip);
-  setTimeout(function() { if (tip.parentNode) tip.remove(); }, 4000);
-}
-
 function recalcTotal() {
   const rows = document.querySelectorAll('#ocrItems .item-editor-row');
   let total = 0;
   rows.forEach(row => { total += parseFloat(row.querySelector('.ie-price').value) || 0; });
   const subtotal = parseFloat(document.getElementById('ocrSubtotal').value) || 0;
   const discount = parseFloat(document.getElementById('ocrDiscount').value) || 0;
-  const tax = parseFloat(document.getElementById('ocrTax').value) || 0;
+  var tax = parseFloat(document.getElementById('ocrTax').value) || 0;
+  var taxIncluded = document.getElementById('ocrTaxIncluded').checked;
+  if (taxIncluded) tax = 0;
   var symbol = getCurrencySymbol();
   document.getElementById('ocrCurrencySymbol').textContent = symbol;
   document.getElementById('ocrTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
@@ -1175,10 +1161,11 @@ async function saveOcrReceipt() {
   }
 
   const discount = parseFloat(document.getElementById('ocrDiscount').value) || 0;
-  const tax = parseFloat(document.getElementById('ocrTax').value) || 0;
+  var tax = parseFloat(document.getElementById('ocrTax').value) || 0;
+  var taxIncluded = document.getElementById('ocrTaxIncluded').checked;
+  if (taxIncluded) tax = 0;
   const subtotal = parseFloat(document.getElementById('ocrSubtotal').value) || 0;
   const itemTotal = items.reduce((s, i) => s + i.total_price, 0);
-  const currency = document.getElementById('ocrCurrency').value;
   const needsReview = document.getElementById('ocrNeedsReview').checked;
 
   try {
@@ -1202,7 +1189,6 @@ async function saveOcrReceipt() {
       discount_amount: discount,
       tax_amount: tax,
       payment_method: document.getElementById('ocrPayment').value,
-      currency: currency,
       notes: needsReview ? '需后续修改' : '',
       image_url: imageUrl,
     };
@@ -1217,7 +1203,6 @@ async function saveOcrReceipt() {
       unit_price: item.unit_price,
       total_price: item.total_price,
       category_name: item.category_name,
-      unit: item.unit,
       sort_order: idx,
     }));
     await sbPost('receipt_items', itemRows);
@@ -1235,13 +1220,9 @@ async function saveOcrReceipt() {
 function retakePhoto() {
   document.getElementById('ocrResult').style.display = 'none';
   document.getElementById('ocrLoading').style.display = 'none';
-  const area = document.getElementById('uploadArea');
-  area.innerHTML = `
-    <div class="upload-icon">📸</div>
-    <div class="upload-text">点击拍照或选择图片</div>
-    <div class="upload-hint">支持 JPG / PNG 格式</div>
-    <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="handleFileSelect(event)">
-  `;
+  var area = document.getElementById('uploadArea');
+  area.style.display = 'block';
+  area.innerHTML = '<div class="upload-icon">📸</div><div class="upload-text">点击拍照或选择图片</div><div class="upload-hint">支持 JPG / PNG 格式</div>';
   area.classList.remove('has-image');
   area.style.cssText = '';
   currentOcrImageFile = null;
@@ -1325,7 +1306,6 @@ async function saveManualReceipt() {
       discount_amount: discount,
       tax_amount: tax,
       payment_method: document.getElementById('manualPayment').value,
-      currency: document.getElementById('manualCurrency').value,
       notes: document.getElementById('manualNotes').value.trim(),
     };
 
@@ -1335,7 +1315,7 @@ async function saveManualReceipt() {
     const itemRows = items.map((item, idx) => ({
       receipt_id: receiptId, name: item.name, quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
-      category_name: item.category_name, unit: item.unit, sort_order: idx
+      category_name: item.category_name, sort_order: idx
     }));
     await sbPost('receipt_items', itemRows);
 
@@ -1516,11 +1496,11 @@ async function editReceipt(id) {
       <div class="currency-payment-row">
         <div class="form-group"><label>货币</label>
           <select id="editCurrency" onchange="calcEditTotal()" style="font-size:13px;padding:8px;">
-            <option value="EUR" ${(r.currency||'EUR')==='EUR'?'selected':''}>€ 欧元 EUR</option>
-            <option value="USD" ${r.currency==='USD'?'selected':''}>$ 美元 USD</option>
-            <option value="GBP" ${r.currency==='GBP'?'selected':''}>£ 英镑 GBP</option>
-            <option value="CNY" ${r.currency==='CNY'?'selected':''}>¥ 人民币 CNY</option>
-            <option value="other" ${r.currency==='other'?'selected':''}>其他</option>
+            <option value="EUR" ${(r.currency||'EUR')==='EUR'?'selected':''}>€ EUR</option>
+            <option value="USD" ${r.currency==='USD'?'selected':''}>$ USD</option>
+            <option value="GBP" ${r.currency==='GBP'?'selected':''}>£ GBP</option>
+            <option value="CNY" ${r.currency==='CNY'?'selected':''}>¥ CNY</option>
+            <option value="other" ${r.currency==='other'?'selected':''}>¤ other</option>
           </select>
         </div>
         <div class="form-group"><label>支付方式</label>
@@ -1631,7 +1611,6 @@ async function saveEditReceipt(id) {
       discount_amount: discount,
       tax_amount: tax,
       payment_method: document.getElementById('editPayment').value,
-      currency: document.getElementById('editCurrency').value,
     }, '?id=eq.' + id);
 
     // Replace items
@@ -1639,7 +1618,7 @@ async function saveEditReceipt(id) {
     const itemRows = items.map((item, idx) => ({
       receipt_id: id, name: item.name, quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
-      category_name: item.category_name, unit: item.unit, sort_order: idx
+      category_name: item.category_name, sort_order: idx
     }));
     if (itemRows.length) await sbPost('receipt_items', itemRows);
 

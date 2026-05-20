@@ -104,7 +104,7 @@ body {
 
 /* Prevent OCR result page from scrolling */
 #page-add.active { overflow: hidden; touch-action: none; }
-#page-add .receipt-review { max-height: calc(100vh - 200px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#page-add .receipt-review { max-height: calc(100vh - 140px); overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ===== Cards ===== */
 .card {
@@ -487,7 +487,7 @@ body {
 /* Item editor inline */
 .item-editor-row {
   display: grid;
-  grid-template-columns: 2fr 0.7fr 0.7fr 1fr 1.1fr auto;
+  grid-template-columns: 3fr 0.6fr 0.6fr 1fr 1.2fr auto;
   gap: 4px;
   align-items: center;
   margin-bottom: 4px;
