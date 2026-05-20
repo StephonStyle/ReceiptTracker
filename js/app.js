@@ -842,9 +842,13 @@ function retakePhoto() {
   document.getElementById('ocrResult').style.display = 'none';
   document.getElementById('ocrLoading').style.display = 'none';
   const area = document.getElementById('uploadArea');
-  area.innerHTML = `<div class="upload-icon">📸</div><div class="upload-text">点击拍照或选择图片</div><div class="upload-hint">支持 JPG / PNG 格式</div>`;
+  area.innerHTML = `
+    <div class="upload-icon">📸</div>
+    <div class="upload-text">点击拍照或选择图片</div>
+    <div class="upload-hint">支持 JPG / PNG 格式</div>
+    <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+  `;
   area.classList.remove('has-image');
-  document.getElementById('fileInput').value = '';
   currentOcrImageFile = null;
 }
 
