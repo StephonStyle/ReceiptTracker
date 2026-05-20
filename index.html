@@ -222,9 +222,10 @@
     <div class="form-group">
       <label>AI 服务商</label>
       <select id="aiProvider" onchange="onProviderChange()" style="width:100%;padding:10px;border:1px solid var(--gray-300);border-radius:8px;font-size:14px;">
+        <option value="gemini">Google Gemini API</option>
         <option value="claude">Claude API（需代理）</option>
         <option value="deepseek">DeepSeek API</option>
-        <option value="gemini">Google Gemini API</option>
+        <option value="local">本地识别（Tesseract.js，无需 API）</option>
       </select>
     </div>
     <div class="settings-item">

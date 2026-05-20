@@ -289,12 +289,13 @@ function getProvider() {
 
 function getApiKey() {
   const p = getProvider();
+  if (p === 'local') return 'local';
   return localStorage.getItem(p === 'deepseek' ? 'deepseek_api_key' : p === 'gemini' ? 'gemini_api_key' : 'claude_api_key');
 }
 
 function getProviderName() {
   const p = getProvider();
-  return p === 'deepseek' ? 'DeepSeek' : p === 'gemini' ? 'Gemini' : 'Claude';
+  return p === 'deepseek' ? 'DeepSeek' : p === 'gemini' ? 'Gemini' : p === 'local' ? '本地识别' : 'Claude';
 }
 
 function onProviderChange() {
@@ -351,6 +352,8 @@ async function startOcr() {
       text = await callDeepSeekOcr(apiKey, dataUrl, mediaType);
     } else if (provider === 'gemini') {
       text = await callGeminiOcr(apiKey, dataUrl, mediaType);
+    } else if (provider === 'local') {
+      text = await callLocalOcr(file);
     } else {
       text = await callClaudeOcr(apiKey, dataUrl, mediaType);
     }
@@ -467,12 +470,91 @@ async function callGeminiOcr(apiKey, dataUrl, mediaType) {
     let msg;
     if (resp.status === 403 || resp.status === 401) msg = 'API Key 无效，请去设置页面检查并重新配置';
     else if (resp.status === 400) msg = '请求参数有误: ' + err.slice(0, 100);
-    else if (resp.status === 429) msg = 'Gemini API 频率限制，请稍后重试';
+    else if (resp.status === 429) msg = 'Gemini API 频率超限，需去 console.cloud.google.com 启用 Generative Language API 并关联付款账号（免费额度仍免费）';
     else msg = 'Gemini API错误(' + resp.status + ')，请稍后重试';
     throw new Error(msg);
   }
   const result = await resp.json();
   return result.candidates[0].content.parts[0].text;
+}
+
+async function callLocalOcr(file) {
+  // Dynamically load Tesseract.js
+  if (typeof Tesseract === 'undefined') {
+    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+  }
+  // Show progress
+  document.querySelector('#ocrLoading .spinner').after(
+    Object.assign(document.createElement('div'), { id: 'ocrProgress', style: 'font-size:13px;margin-top:8px;' })
+  );
+  const result = await Tesseract.recognize(file, 'chi_sim+eng', {
+    logger: m => {
+      const el = document.getElementById('ocrProgress');
+      if (el && m.status === 'recognizing text') el.textContent = '识别中... ' + Math.round(m.progress * 100) + '%';
+    }
+  });
+  // Parse raw OCR text into receipt format
+  const rawText = result.data.text;
+  return parseOcrTextToReceipt(rawText);
+}
+
+function parseOcrTextToReceipt(rawText) {
+  // Try to extract basic info from raw text with simple heuristics
+  const lines = rawText.split('\n').filter(l => l.trim());
+  // Build a simple structured result
+  const receipt = {
+    store_name: lines[0] || '',
+    receipt_date: '',
+    receipt_time: '',
+    items: [],
+    subtotal: 0,
+    total_amount: 0,
+    discount_amount: 0,
+    tax_amount: 0,
+    payment_method: '',
+    uncertain_fields: [],
+    uncertain_questions: {}
+  };
+  // Look for date patterns
+  const dateMatch = rawText.match(/(\d{4}[-/]\d{1,2}[-/]\d{1,2})/);
+  if (dateMatch) receipt.receipt_date = dateMatch[1].replace(/\//g, '-');
+  // Look for total amount patterns
+  const totalMatch = rawText.match(/[总合][计额]\s*[:：]?\s*¥?\s*(\d+\.?\d*)/);
+  if (totalMatch) receipt.total_amount = parseFloat(totalMatch[1]);
+  else {
+    const priceMatch = rawText.match(/合计?[:：]?\s*¥?\s*(\d+\.?\d*)/);
+    if (priceMatch) receipt.total_amount = parseFloat(priceMatch[1]);
+  }
+  // Try to extract items (lines containing numbers)
+  const priceLines = lines.filter(l => /\d+\.?\d*/.test(l));
+  priceLines.forEach(l => {
+    const nums = l.match(/(\d+\.?\d*)/g);
+    if (nums && nums.length >= 1) {
+      const lastNum = parseFloat(nums[nums.length - 1]);
+      if (lastNum > 0 && lastNum < 100000) {
+        const name = l.replace(/\d+\.?\d*/g, '').replace(/[×xX*]\s*\d+/g, '').trim();
+        if (name && !name.includes('合') && !name.includes('总') && !name.includes('找') && !name.includes('支')) {
+          receipt.items.push({ name, quantity: 1, unit_price: lastNum, total_price: lastNum, category_name: '其他' });
+        }
+      }
+    }
+  });
+  if (!receipt.items.length) {
+    receipt.items.push({ name: rawText.slice(0, 30) + '...', quantity: 1, unit_price: receipt.total_amount, total_price: receipt.total_amount, category_name: '其他' });
+  }
+  receipt.uncertain_fields = ['store_name', 'receipt_date', 'receipt_time', 'items', 'subtotal', 'payment_method'];
+  receipt.uncertain_questions = { store_name: '本地识别可能不准确，请核对并修改以上信息' };
+  return JSON.stringify(receipt, null, 2);
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('加载Tesseract.js失败'));
+    document.body.appendChild(s);
+  });
 }
 
 function getOcrPrompt() {
@@ -1234,6 +1316,12 @@ function checkApiKeyStatus() {
   const key = getApiKey();
   const el = document.getElementById('apiKeyStatus');
   const label = document.getElementById('apiKeyLabel');
+  if (provider === 'local') {
+    label.textContent = '🔑 API Key（本地识别无需 Key）';
+    el.textContent = '无需配置';
+    el.className = 'si-status configured';
+    return;
+  }
   label.textContent = provider === 'deepseek' ? '🔑 DeepSeek API Key' : provider === 'gemini' ? '🔑 Gemini API Key' : '🔑 Claude API Key';
   el.textContent = key ? '已配置' : '未配置';
   el.className = 'si-status ' + (key ? 'configured' : 'not-configured');
