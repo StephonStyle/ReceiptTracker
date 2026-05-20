@@ -290,12 +290,12 @@ function getProvider() {
 function getApiKey() {
   const p = getProvider();
   if (p === 'local') return 'local';
-  return localStorage.getItem(p === 'deepseek' ? 'deepseek_api_key' : p === 'gemini' ? 'gemini_api_key' : 'claude_api_key');
+  return localStorage.getItem(p === 'deepseek' ? 'deepseek_api_key' : p === 'gemini' ? 'gemini_api_key' : p === 'openai' ? 'openai_api_key' : 'claude_api_key');
 }
 
 function getProviderName() {
   const p = getProvider();
-  return p === 'deepseek' ? 'DeepSeek' : p === 'gemini' ? 'Gemini' : p === 'local' ? '本地识别' : 'Claude';
+  return p === 'deepseek' ? 'DeepSeek' : p === 'gemini' ? 'Gemini' : p === 'openai' ? 'OpenAI' : p === 'local' ? '本地识别' : 'Claude';
 }
 
 function syncProviderFromDropdown() {
@@ -421,6 +421,19 @@ async function testApiConnection() {
       }
       diag('DeepSeek测试成功');
       showToast('DeepSeek API 连接正常', 'success');
+    } else if (provider === 'openai') {
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 100, messages: [{ role: 'user', content: 'Reply "OK" in one word.' }] })
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        diag('OpenAI测试失败: ' + err.slice(0, 300));
+        throw new Error(err.slice(0, 200));
+      }
+      diag('OpenAI测试成功');
+      showToast('OpenAI API 连接正常', 'success');
     }
   } catch (e) {
     diag('测试失败: ' + e.message);
@@ -481,6 +494,8 @@ async function startOcr() {
       text = await callDeepSeekOcr(apiKey, dataUrl, mediaType);
     } else if (provider === 'gemini') {
       text = await callGeminiOcr(apiKey, dataUrl, mediaType);
+    } else if (provider === 'openai') {
+      text = await callOpenAiOcr(apiKey, dataUrl, mediaType);
     } else if (provider === 'local') {
       text = await callLocalOcr(file);
     } else {
@@ -652,6 +667,40 @@ async function callGeminiOcr(apiKey, dataUrl, mediaType) {
     }
     throw e;
   }
+}
+
+async function callOpenAiOcr(apiKey, dataUrl, mediaType) {
+  const mimeMap = { 'image/jpeg': 'image/jpeg', 'image/png': 'image/png', 'image/webp': 'image/webp', 'image/gif': 'image/gif' };
+  const mime = mimeMap[mediaType] || 'image/jpeg';
+  diag('OpenAI: 开始调用 GPT-4o');
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: getOcrPrompt() },
+          { type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + dataUrl } }
+        ]
+      }]
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    diag('OpenAI: 返回错误: ' + err.slice(0, 300));
+    let msg;
+    if (resp.status === 401 || resp.status === 403) msg = 'API Key 无效，请检查 OpenAI API Key';
+    else if (resp.status === 429) msg = 'OpenAI 速率超限，请稍后重试';
+    else if (resp.status === 400) msg = '请求参数有误: ' + err.slice(0, 100);
+    else msg = 'OpenAI API错误(' + resp.status + '): ' + err.slice(0, 100);
+    throw new Error(msg);
+  }
+  const result = await resp.json();
+  diag('OpenAI: 调用成功');
+  return result.choices[0].message.content;
 }
 
 async function callLocalOcr(file) {
@@ -1502,7 +1551,7 @@ function checkApiKeyStatus() {
     el.className = 'si-status configured';
     return;
   }
-  label.textContent = provider === 'deepseek' ? '🔑 DeepSeek API Key' : provider === 'gemini' ? '🔑 Gemini API Key' : '🔑 Claude API Key';
+  label.textContent = provider === 'deepseek' ? '🔑 DeepSeek API Key' : provider === 'gemini' ? '🔑 Gemini API Key' : provider === 'openai' ? '🔑 OpenAI API Key' : '🔑 Claude API Key';
   el.textContent = key ? '已配置' : '未配置';
   el.className = 'si-status ' + (key ? 'configured' : 'not-configured');
   // Sync the dropdown
@@ -1525,6 +1574,10 @@ function showApiKeyModal() {
     title.textContent = '🔑 配置 Google Gemini API Key';
     desc.innerHTML = '用于小票 OCR 识别，可在 <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary);">Google AI Studio</a> 免费获取';
     input.placeholder = 'AIzaSy...';
+  } else if (provider === 'openai') {
+    title.textContent = '🔑 配置 OpenAI API Key';
+    desc.innerHTML = '用于小票 OCR 识别，可在 <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--primary);">OpenAI Platform</a> 获取';
+    input.placeholder = 'sk-...';
   } else {
     title.textContent = '🔑 配置 Claude API Key';
     desc.innerHTML = '用于小票识别，可在 <a href="https://console.anthropic.com/" target="_blank" style="color:var(--primary);">Anthropic Console</a> 获取';
@@ -1542,7 +1595,7 @@ function saveApiKey() {
   // Sync provider from dropdown before saving
   syncProviderFromDropdown();
   const provider = getProvider();
-  const keyName = provider === 'deepseek' ? 'deepseek_api_key' : provider === 'gemini' ? 'gemini_api_key' : 'claude_api_key';
+  const keyName = provider === 'deepseek' ? 'deepseek_api_key' : provider === 'gemini' ? 'gemini_api_key' : provider === 'openai' ? 'openai_api_key' : 'claude_api_key';
   localStorage.setItem(keyName, key);
   showToast('✓ API Key 已保存', 'success');
   hideModal('apiKeyModal');
