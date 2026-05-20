@@ -2,6 +2,9 @@
   "functions": {
     "api/anthropic.js": {
       "maxDuration": 30
+    },
+    "api/gemini.js": {
+      "maxDuration": 30
     }
   }
 }

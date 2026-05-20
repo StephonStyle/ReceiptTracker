@@ -233,6 +233,9 @@
       <span class="si-status not-configured" id="apiKeyStatus">未配置</span>
     </div>
     <button class="btn btn-sm btn-outline btn-block" onclick="showApiKeyModal()">配置 API Key</button>
+    <button class="btn btn-sm btn-primary btn-block" onclick="testApiConnection()" style="margin-top:6px;">🔄 测试连接</button>
+    <div id="diagInfo" style="margin-top:10px;padding:10px;background:var(--gray-100);border-radius:8px;font-size:12px;color:var(--gray-500);line-height:1.8;display:none;word-break:break-all;"></div>
+    <button class="btn btn-sm btn-outline btn-block" onclick="toggleDiag()" style="margin-top:6px;font-size:11px;">🔍 显示诊断信息</button>
   </div>
   <div class="card">
     <div class="card-title">💡 使用说明</div>

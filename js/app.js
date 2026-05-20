@@ -303,6 +303,103 @@ function onProviderChange() {
   checkApiKeyStatus();
 }
 
+// ======================== DIAGNOSTICS ========================
+let diagLog = [];
+function diag(msg) {
+  diagLog.push('[' + new Date().toLocaleTimeString() + '] ' + msg);
+  console.log('[账单管家] ' + msg);
+}
+function getDiagText() {
+  return diagLog.join('\n');
+}
+function toggleDiag() {
+  const el = document.getElementById('diagInfo');
+  if (!el) return;
+  if (el.style.display === 'block') {
+    el.style.display = 'none';
+  } else {
+    el.style.display = 'block';
+    const p = getProvider();
+    const k = getApiKey();
+    el.innerHTML = [
+      '<div><b>当前提供商:</b> ' + getProviderName() + ' (' + p + ')</div>',
+      '<div><b>API Key:</b> ' + (k ? k.slice(0, 8) + '...' + k.slice(-4) : '未配置') + '</div>',
+      '<div><b>localStorage:</b> ai_provider=' + (localStorage.getItem('ai_provider') || '(未设置)') + '</div>',
+      '<div><b>日志:</b></div>',
+      '<div style="max-height:200px;overflow-y:auto;white-space:pre-wrap;font-family:monospace;font-size:11px;">' + getDiagText() + '</div>'
+    ].join('');
+  }
+}
+
+async function testApiConnection() {
+  const provider = getProvider();
+  const apiKey = getApiKey();
+  diag('测试连接: provider=' + provider + ', key=' + (apiKey ? apiKey.slice(0, 8) + '...' : '无'));
+
+  if (!apiKey) {
+    showToast('请先配置 ' + getProviderName() + ' API Key', 'error');
+    return;
+  }
+
+  if (provider === 'local') {
+    showToast('本地识别无需测试', '');
+    return;
+  }
+
+  showToast('正在测试 ' + getProviderName() + ' 连接...');
+
+  try {
+    if (provider === 'gemini') {
+      const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Hello, reply "OK" in one word.' }] }] })
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        diag('Gemini测试失败: ' + err.slice(0, 300));
+        throw new Error(err.slice(0, 200));
+      }
+      const result = await resp.json();
+      diag('Gemini测试成功');
+      showToast('Gemini API 连接正常', 'success');
+    } else if (provider === 'claude') {
+      const PROXY_URL = localStorage.getItem('ocr_proxy_url') || 'https://receipt-tracker-api-kohl.vercel.app/api/anthropic';
+      const resp = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey,
+          body: { model: 'claude-sonnet-4-6', max_tokens: 100, messages: [{ role: 'user', content: 'Reply "OK" in one word.' }] }
+        })
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        diag('Claude测试失败: ' + err.slice(0, 300));
+        throw new Error(err.slice(0, 200));
+      }
+      diag('Claude测试成功');
+      showToast('Claude API 连接正常', 'success');
+    } else if (provider === 'deepseek') {
+      const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+        body: JSON.stringify({ model: 'deepseek-chat', max_tokens: 100, messages: [{ role: 'user', content: 'Reply "OK" in one word.' }] })
+      });
+      if (!resp.ok) {
+        const err = await resp.text();
+        diag('DeepSeek测试失败: ' + err.slice(0, 300));
+        throw new Error(err.slice(0, 200));
+      }
+      diag('DeepSeek测试成功');
+      showToast('DeepSeek API 连接正常', 'success');
+    }
+  } catch (e) {
+    diag('测试失败: ' + e.message);
+    showToast('连接失败: ' + e.message, 'error');
+  }
+}
+
 // ======================== OCR UPLOAD ========================
 function handleFileSelect(event) {
   const file = event.target.files[0];
@@ -329,6 +426,7 @@ async function startOcr() {
 
   const apiKey = getApiKey();
   const provider = getProvider();
+  diag('OCR开始: provider=' + provider + ', key=' + (apiKey ? apiKey.slice(0, 8) + '...' : '无'));
   if (!apiKey) {
     showToast('请先在设置中配置 ' + getProviderName() + ' API Key', 'error');
     document.querySelector('.tab[data-page="settings"]').style.animation = 'pulse-warning 0.5s ease-in-out 3';
@@ -370,9 +468,11 @@ async function startOcr() {
     document.getElementById('ocrLoading').style.display = 'none';
     fillOcrResult(receipt);
     document.getElementById('ocrResult').style.display = 'block';
+    diag('OCR成功，已填充结果');
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
     document.getElementById('ocrLoading').style.display = 'none';
+    diag('OCR失败: ' + e.message);
     if (e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network')) {
       showToast('网络连接失败，请检查网络后重试', 'error');
     } else {
@@ -452,30 +552,75 @@ async function callDeepSeekOcr(apiKey, dataUrl, mediaType) {
 async function callGeminiOcr(apiKey, dataUrl, mediaType) {
   const mimeMap = { 'image/jpeg': 'image/jpeg', 'image/png': 'image/png', 'image/webp': 'image/webp', 'image/gif': 'image/gif' };
   const mime = mimeMap[mediaType] || 'image/jpeg';
-  const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        role: 'user',
-        parts: [
-          { text: getOcrPrompt() },
-          { inline_data: { mime_type: mime, data: dataUrl } }
-        ]
-      }]
-    })
-  });
-  if (!resp.ok) {
-    const err = await resp.text();
-    let msg;
-    if (resp.status === 403 || resp.status === 401) msg = 'API Key 无效。原始错误: ' + err.slice(0, 200);
-    else if (resp.status === 400) msg = '请求参数有误: ' + err.slice(0, 200);
-    else if (resp.status === 429) msg = 'Gemini 频率超限。去 https://aistudio.google.com/apikey 重新创建 Key（免费额度）。原始: ' + err.slice(0, 300);
-    else msg = 'Gemini API错误(' + resp.status + '): ' + err.slice(0, 200);
-    throw new Error(msg);
+  const geminiProxy = localStorage.getItem('gemini_proxy_url') || 'https://receipt-tracker-api-kohl.vercel.app/api/gemini';
+  const requestBody = {
+    contents: [{
+      role: 'user',
+      parts: [
+        { text: getOcrPrompt() },
+        { inline_data: { mime_type: mime, data: dataUrl } }
+      ]
+    }]
+  };
+
+  let lastErr = null;
+
+  // Try Vercel proxy first (helps when Google is blocked/unreachable)
+  if (geminiProxy) {
+    diag('Gemini: 尝试通过代理 ' + geminiProxy);
+    try {
+      const resp = await fetch(geminiProxy, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey, body: requestBody })
+      });
+      if (resp.ok) {
+        const result = await resp.json();
+        diag('Gemini: 代理调用成功');
+        return result.candidates[0].content.parts[0].text;
+      }
+      const errText = await resp.text();
+      diag('Gemini: 代理返回错误 ' + resp.status + ': ' + errText.slice(0, 200));
+      lastErr = new Error('代理错误(' + resp.status + '): ' + errText.slice(0, 200));
+    } catch (e) {
+      diag('Gemini: 代理调用失败: ' + e.message);
+      lastErr = e;
+    }
   }
-  const result = await resp.json();
-  return result.candidates[0].content.parts[0].text;
+
+  // Fall back to direct connection
+  diag('Gemini: 尝试直连');
+  try {
+    const resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + apiKey, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      diag('Gemini: 直连返回错误: ' + err.slice(0, 300));
+      let msg;
+      if (resp.status === 403 || resp.status === 401) {
+        msg = 'API Key 无效。原始错误: ' + err.slice(0, 200);
+      } else if (resp.status === 400) {
+        msg = '请求参数有误: ' + err.slice(0, 200);
+      } else if (resp.status === 429) {
+        msg = 'Gemini 频率超限。去 https://aistudio.google.com/apikey 重新创建 Key。原始: ' + err.slice(0, 300);
+      } else {
+        msg = 'Gemini API错误(' + resp.status + '): ' + err.slice(0, 200);
+      }
+      throw new Error(msg);
+    }
+    const result = await resp.json();
+    diag('Gemini: 直连调用成功');
+    return result.candidates[0].content.parts[0].text;
+  } catch (e) {
+    diag('Gemini: 直连失败: ' + e.message);
+    if (lastErr && !e.message.includes('频率超限') && !e.message.includes('无效')) {
+      throw lastErr;
+    }
+    throw e;
+  }
 }
 
 async function callLocalOcr(file) {
