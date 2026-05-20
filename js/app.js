@@ -298,6 +298,11 @@ function getProviderName() {
   return p === 'deepseek' ? 'DeepSeek' : p === 'gemini' ? 'Gemini' : p === 'local' ? '本地识别' : 'Claude';
 }
 
+function syncProviderFromDropdown() {
+  const sel = document.getElementById('aiProvider');
+  if (sel) localStorage.setItem('ai_provider', sel.value);
+}
+
 function onProviderChange() {
   localStorage.setItem('ai_provider', document.getElementById('aiProvider').value);
   checkApiKeyStatus();
@@ -352,6 +357,9 @@ function copyDiag() {
 }
 
 async function testApiConnection() {
+  // Sync dropdown to localStorage before reading
+  syncProviderFromDropdown();
+
   const provider = getProvider();
   const apiKey = getApiKey();
   diag('测试连接: provider=' + provider + ', key=' + (apiKey ? apiKey.slice(0, 8) + '...' : '无'));
@@ -443,6 +451,9 @@ function handleFileSelect(event) {
 async function startOcr() {
   const file = currentOcrImageFile;
   if (!file) return;
+
+  // Sync dropdown to localStorage (handles mobile browsers where onchange may not fire)
+  syncProviderFromDropdown();
 
   const apiKey = getApiKey();
   const provider = getProvider();
@@ -1528,6 +1539,8 @@ function showApiKeyModal() {
 function saveApiKey() {
   const key = document.getElementById('apiKeyInput').value.trim();
   if (!key) { showToast('请输入 API Key', 'error'); return; }
+  // Sync provider from dropdown before saving
+  syncProviderFromDropdown();
   const provider = getProvider();
   const keyName = provider === 'deepseek' ? 'deepseek_api_key' : provider === 'gemini' ? 'gemini_api_key' : 'claude_api_key';
   localStorage.setItem(keyName, key);
