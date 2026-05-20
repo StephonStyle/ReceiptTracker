@@ -484,10 +484,13 @@ async function startOcr() {
   document.getElementById('ocrResult').style.display = 'none';
 
   try {
-    const base64 = await fileToBase64(file);
-    const ext = file.name.split('.').pop().toLowerCase();
+    // Compress image to avoid Vercel body size limits
+    const compressedFile = await compressImage(file, 1600);
+    const base64 = await fileToBase64(compressedFile);
+    const ext = compressedFile.name.split('.').pop().toLowerCase();
     const mediaType = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[ext] || 'image/jpeg';
     const dataUrl = base64.split(',')[1];
+    diag('图片大小: ' + (base64.length / 1024).toFixed(0) + 'KB (压缩后)');
 
     let text;
     if (provider === 'deepseek') {
@@ -839,6 +842,32 @@ function getOcrPrompt() {
   "uncertain_fields": [],
   "uncertain_questions": {}
 }`;
+}
+
+function compressImage(file, maxDim) {
+  return new Promise(function(resolve, reject) {
+    var img = new Image();
+    img.onload = function() {
+      var w = img.width, h = img.height;
+      if (w <= maxDim && h <= maxDim) { resolve(file); return; }
+      var ratio = Math.min(maxDim / w, maxDim / h);
+      var c = document.createElement('canvas');
+      c.width = Math.round(w * ratio);
+      c.height = Math.round(h * ratio);
+      var ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(function(blob) {
+        if (!blob) { resolve(file); return; }
+        blob.name = file.name;
+        resolve(blob);
+      }, 'image/jpeg', 0.85);
+    };
+    img.onerror = function() { resolve(file); };
+    var reader = new FileReader();
+    reader.onload = function(e) { img.src = e.target.result; };
+    reader.onerror = function() { resolve(file); };
+    reader.readAsDataURL(file);
+  });
 }
 
 function fileToBase64(file) {
