@@ -77,6 +77,9 @@ let listPage = 1;
 let editingReceiptId = null;
 
 // ======================== INIT ========================
+if (typeof Chart === 'undefined') {
+  document.getElementById('pageTitle').textContent = '⚠️ Chart.js 加载失败，请刷新重试';
+}
 addManualItemRow();
 addItemRow();
 setDefaultDates();
