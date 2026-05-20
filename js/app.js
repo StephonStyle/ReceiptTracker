@@ -283,31 +283,43 @@ function renderAnaDailyChart(daily) {
 }
 
 // ======================== OCR UPLOAD ========================
-async function handleFileSelect(event) {
+function handleFileSelect(event) {
   const file = event.target.files[0];
   if (!file) return;
 
   currentOcrImageFile = file;
 
-  // Preview
+  // Show preview + start button
   const reader = new FileReader();
   reader.onload = function (e) {
     const area = document.getElementById('uploadArea');
-    area.innerHTML = `<img src="${e.target.result}" alt="preview">`;
+    area.innerHTML = `
+      <img src="${e.target.result}" alt="preview">
+      <button class="btn btn-primary btn-lg" style="margin-top:12px;" onclick="event.stopPropagation();startOcr()">🚀 开始 AI 识别</button>
+    `;
     area.classList.add('has-image');
   };
   reader.readAsDataURL(file);
+}
+
+async function startOcr() {
+  const file = currentOcrImageFile;
+  if (!file) return;
+
+  const apiKey = localStorage.getItem('claude_api_key');
+  if (!apiKey) {
+    showToast('请先在设置中配置 Claude API Key', 'error');
+    // Highlight the settings tab
+    document.querySelector('.tab[data-page="settings"]').style.animation = 'pulse-warning 0.5s ease-in-out 3';
+    setTimeout(() => {
+      document.querySelector('.tab[data-page="settings"]').style.animation = '';
+    }, 1500);
+    return;
+  }
 
   // OCR via Claude API
   document.getElementById('ocrLoading').style.display = 'block';
   document.getElementById('ocrResult').style.display = 'none';
-
-  const apiKey = localStorage.getItem('claude_api_key');
-  if (!apiKey) {
-    document.getElementById('ocrLoading').style.display = 'none';
-    showToast('请先在设置中配置 Claude API Key', 'error');
-    return;
-  }
 
   try {
     const base64 = await fileToBase64(file);
