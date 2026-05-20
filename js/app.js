@@ -77,12 +77,10 @@ let listPage = 1;
 let editingReceiptId = null;
 
 // ======================== INIT ========================
-document.addEventListener('DOMContentLoaded', () => {
-  addManualItemRow();
-  addItemRow();
-  setDefaultDates();
-  refreshDashboard();
-});
+addManualItemRow();
+addItemRow();
+setDefaultDates();
+refreshDashboard();
 
 function setDefaultDates() {
   const today = new Date().toISOString().split('T')[0];
