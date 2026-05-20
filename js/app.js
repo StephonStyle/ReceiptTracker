@@ -1481,9 +1481,9 @@ async function editReceipt(id) {
     container.innerHTML = `
       <h3 style="margin-bottom:16px;">✏️ 编辑账单</h3>
       <div class="form-group"><label>商家名称</label><input id="editStore" value="${esc(r.store_name || '')}"></div>
-      <div class="form-row">
-        <div class="form-group"><label>日期</label><input type="date" id="editDate" value="${r.receipt_date || ''}"></div>
-        <div class="form-group"><label>时间</label><input type="time" id="editTime" value="${r.receipt_time || ''}"></div>
+      <div class="form-row" style="gap:6px;">
+        <div class="form-group"><label>日期</label><input type="date" id="editDate" value="${r.receipt_date || ''}" style="font-size:12px;padding:5px 6px;"></div>
+        <div class="form-group"><label>时间</label><input type="time" id="editTime" value="${r.receipt_time || ''}" style="font-size:12px;padding:5px 6px;"></div>
       </div>
       <div class="card-title">🛒 商品明细</div>
       <div id="editItems"></div>
