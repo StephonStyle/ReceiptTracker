@@ -282,6 +282,23 @@ function renderAnaDailyChart(daily) {
   });
 }
 
+// ======================== PROVIDER HELPERS ========================
+function getProvider() {
+  return localStorage.getItem('ai_provider') || 'claude';
+}
+
+function getApiKey() {
+  const p = getProvider();
+  return localStorage.getItem(p === 'deepseek' ? 'deepseek_api_key' : 'claude_api_key');
+}
+
+function getProviderName() { return getProvider() === 'deepseek' ? 'DeepSeek' : 'Claude'; }
+
+function onProviderChange() {
+  localStorage.setItem('ai_provider', document.getElementById('aiProvider').value);
+  checkApiKeyStatus();
+}
+
 // ======================== OCR UPLOAD ========================
 function handleFileSelect(event) {
   const file = event.target.files[0];
@@ -306,10 +323,10 @@ async function startOcr() {
   const file = currentOcrImageFile;
   if (!file) return;
 
-  const apiKey = localStorage.getItem('claude_api_key');
+  const apiKey = getApiKey();
+  const provider = getProvider();
   if (!apiKey) {
-    showToast('请先在设置中配置 Claude API Key', 'error');
-    // Highlight the settings tab
+    showToast('请先在设置中配置 ' + getProviderName() + ' API Key', 'error');
     document.querySelector('.tab[data-page="settings"]').style.animation = 'pulse-warning 0.5s ease-in-out 3';
     setTimeout(() => {
       document.querySelector('.tab[data-page="settings"]').style.animation = '';
@@ -317,7 +334,6 @@ async function startOcr() {
     return;
   }
 
-  // OCR via Claude API
   document.getElementById('ocrLoading').style.display = 'block';
   document.getElementById('ocrResult').style.display = 'none';
 
@@ -327,40 +343,12 @@ async function startOcr() {
     const mediaType = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[ext] || 'image/jpeg';
     const dataUrl = base64.split(',')[1];
 
-    // 通过代理调用 Claude API（浏览器不能直接调用 Anthropic API）
-    const PROXY_URL = localStorage.getItem('ocr_proxy_url') || 'https://receipt-tracker-api-kohl.vercel.app/api/anthropic';
-    const resp = await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apiKey,
-        body: {
-          model: 'claude-sonnet-4-6',
-          max_tokens: 4096,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: mediaType, data: dataUrl } },
-              { type: 'text', text: getOcrPrompt() }
-            ]
-          }]
-        }
-      })
-    });
-
-    if (!resp.ok) {
-      const err = await resp.text();
-      let msg;
-      if (resp.status === 401 || resp.status === 403) msg = 'API Key 无效，请去设置页面检查并重新配置';
-      else if (resp.status === 400) msg = '请求参数有误，请重试或联系开发者';
-      else if (resp.status === 502 || resp.status === 504) msg = '代理服务器连接超时，请稍后重试';
-      else if (resp.status === 500) msg = '代理服务器内部错误，请稍后重试';
-      else msg = 'API错误(' + resp.status + ')，请稍后重试';
-      throw new Error(msg);
+    let text;
+    if (provider === 'deepseek') {
+      text = await callDeepSeekOcr(apiKey, dataUrl, mediaType);
+    } else {
+      text = await callClaudeOcr(apiKey, dataUrl, mediaType);
     }
-
-    const result = await resp.json();
-    const text = result.content[0].text;
 
     // Parse JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -377,13 +365,80 @@ async function startOcr() {
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
     document.getElementById('ocrLoading').style.display = 'none';
-    // Network errors (fetch itself failed)
     if (e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network')) {
       showToast('网络连接失败，请检查网络后重试', 'error');
     } else {
       showToast('识别失败: ' + e.message, 'error');
     }
   }
+}
+
+async function callClaudeOcr(apiKey, dataUrl, mediaType) {
+  const PROXY_URL = localStorage.getItem('ocr_proxy_url') || 'https://receipt-tracker-api-kohl.vercel.app/api/anthropic';
+  const resp = await fetch(PROXY_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      apiKey,
+      body: {
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: dataUrl } },
+            { type: 'text', text: getOcrPrompt() }
+          ]
+        }]
+      }
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    let msg;
+    if (resp.status === 401 || resp.status === 403) msg = 'API Key 无效，请去设置页面检查并重新配置';
+    else if (resp.status === 400) msg = '请求参数有误，请重试或联系开发者';
+    else if (resp.status === 502 || resp.status === 504) msg = '代理服务器连接超时，请稍后重试';
+    else if (resp.status === 500) msg = '代理服务器内部错误，请稍后重试';
+    else msg = 'API错误(' + resp.status + ')，请稍后重试';
+    throw new Error(msg);
+  }
+  const result = await resp.json();
+  return result.content[0].text;
+}
+
+async function callDeepSeekOcr(apiKey, dataUrl, mediaType) {
+  const resp = await fetch('https://api.deepseek.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+    body: JSON.stringify({
+      model: 'deepseek-v4-flash',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: getOcrPrompt() },
+          { type: 'image_url', image_url: { url: 'data:' + mediaType + ';base64,' + dataUrl } }
+        ]
+      }]
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    let msg;
+    if (resp.status === 401 || resp.status === 403) msg = 'API Key 无效，请去设置页面检查并重新配置';
+    else if (resp.status === 400) {
+      // Check if it's because images aren't supported
+      if (err.includes('image') || err.includes('vision') || err.includes('multimodal')) {
+        msg = 'DeepSeek 不支持图片识别，请在设置中换用 Claude API';
+      } else {
+        msg = '请求参数有误: ' + err.slice(0, 100);
+      }
+    } else msg = 'DeepSeek API错误(' + resp.status + ')，请稍后重试';
+    throw new Error(msg);
+  }
+  const result = await resp.json();
+  return result.choices[0].message.content;
 }
 
 function getOcrPrompt() {
@@ -1141,22 +1196,45 @@ async function doExport(type) {
 
 // ======================== SETTINGS ========================
 function checkApiKeyStatus() {
-  const key = localStorage.getItem('claude_api_key');
+  const provider = getProvider();
+  const key = getApiKey();
   const el = document.getElementById('apiKeyStatus');
+  const label = document.getElementById('apiKeyLabel');
+  label.textContent = provider === 'deepseek' ? '🔑 DeepSeek API Key' : '🔑 Claude API Key';
   el.textContent = key ? '已配置' : '未配置';
   el.className = 'si-status ' + (key ? 'configured' : 'not-configured');
+  // Sync the dropdown
+  const sel = document.getElementById('aiProvider');
+  if (sel) sel.value = provider;
 }
 
 function showApiKeyModal() {
+  const provider = getProvider();
+  const title = document.getElementById('apiKeyModalTitle');
+  const desc = document.getElementById('apiKeyModalDesc');
+  const input = document.getElementById('apiKeyInput');
+  input.value = '';
+
+  if (provider === 'deepseek') {
+    title.textContent = '🔑 配置 DeepSeek API Key';
+    desc.innerHTML = '用于小票 OCR 识别，可在 <a href="https://platform.deepseek.com/api_keys" target="_blank" style="color:var(--primary);">DeepSeek Platform</a> 获取';
+    input.placeholder = 'sk-...';
+  } else {
+    title.textContent = '🔑 配置 Claude API Key';
+    desc.innerHTML = '用于小票识别，可在 <a href="https://console.anthropic.com/" target="_blank" style="color:var(--primary);">Anthropic Console</a> 获取';
+    input.placeholder = 'sk-ant-...';
+  }
+
   document.getElementById('apiKeyModal').classList.add('show');
-  const existing = localStorage.getItem('claude_api_key');
-  if (existing) document.getElementById('apiKeyInput').placeholder = '已配置，输入新值覆盖';
+  const existing = getApiKey();
+  if (existing) input.placeholder += '（已配置，输入新值覆盖）';
 }
 
 function saveApiKey() {
   const key = document.getElementById('apiKeyInput').value.trim();
   if (!key) { showToast('请输入 API Key', 'error'); return; }
-  localStorage.setItem('claude_api_key', key);
+  const provider = getProvider();
+  localStorage.setItem(provider === 'deepseek' ? 'deepseek_api_key' : 'claude_api_key', key);
   showToast('✓ API Key 已保存', 'success');
   hideModal('apiKeyModal');
   checkApiKeyStatus();
