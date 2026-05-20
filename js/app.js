@@ -470,7 +470,7 @@ async function callGeminiOcr(apiKey, dataUrl, mediaType) {
     let msg;
     if (resp.status === 403 || resp.status === 401) msg = 'API Key 无效，请去设置页面检查并重新配置';
     else if (resp.status === 400) msg = '请求参数有误: ' + err.slice(0, 100);
-    else if (resp.status === 429) msg = 'Gemini API 频率超限，需去 console.cloud.google.com 启用 Generative Language API 并关联付款账号（免费额度仍免费）';
+    else if (resp.status === 429) msg = 'Gemini 频率超限，需去 https://console.cloud.google.com 启用 Generative Language API 并关联付款账号（免费额度不扣费）。原始错误: ' + err.slice(0, 200);
     else msg = 'Gemini API错误(' + resp.status + ')，请稍后重试';
     throw new Error(msg);
   }
