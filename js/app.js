@@ -85,6 +85,70 @@ function getCurrencySymbol() {
   return c ? (currencyMap[c.value] || '€') : '€';
 }
 
+var itemTranslations = {
+  'coca cola':'可口可乐','pepsi':'百事可乐','sprite':'雪碧','fanta':'芬达',
+  'water':'矿泉水','water bottle':'瓶装水','milk':'牛奶','soy milk':'豆浆',
+  'juice':'果汁','orange juice':'橙汁','apple juice':'苹果汁',
+  'coffee':'咖啡','latte':'拿铁','cappuccino':'卡布奇诺','espresso':'浓缩咖啡','americano':'美式咖啡',
+  'tea':'茶','green tea':'绿茶','black tea':'红茶','milk tea':'奶茶',
+  'beer':'啤酒','wine':'葡萄酒','red wine':'红酒','white wine':'白酒',
+  'bread':'面包','croissant':'牛角包','baguette':'法棍','toast':'吐司',
+  'rice':'米饭','noodle':'面条','pasta':'意面','spaghetti':'意大利面',
+  'chicken':'鸡肉','beef':'牛肉','pork':'猪肉','fish':'鱼','shrimp':'虾','egg':'鸡蛋',
+  'cheese':'奶酪','butter':'黄油','yogurt':'酸奶','cream':'奶油',
+  'apple':'苹果','banana':'香蕉','orange':'橙子','grape':'葡萄','strawberry':'草莓',
+  'potato':'土豆','tomato':'番茄','onion':'洋葱','lettuce':'生菜','cucumber':'黄瓜',
+  'chocolate':'巧克力','candy':'糖果','cookie':'饼干','cake':'蛋糕','ice cream':'冰淇淋',
+  'ketchup':'番茄酱','salt':'盐','sugar':'糖','oil':'油','vinegar':'醋','soy sauce':'酱油',
+  'tissue':'纸巾','paper towel':'纸巾','napkin':'餐巾','plastic bag':'塑料袋',
+  'shampoo':'洗发水','soap':'肥皂','toothpaste':'牙膏','toilet paper':'卫生纸',
+  'vitamin':'维生素','medicine':'药','band aid':'创可贴',
+  'pizza':'披萨','burger':'汉堡','sandwich':'三明治','salad':'沙拉','soup':'汤',
+  'fries':'薯条','chips':'薯片','sushi':'寿司','dim sum':'点心',
+  'receipt':'收据','total':'总计','subtotal':'小计','discount':'折扣','tax':'税费','change':'找零',
+  'cash':'现金','card':'银行卡','credit':'信用卡','debit':'借记卡',
+  'visa':'维萨','mastercard':'万事达','amex':'美国运通',
+  'gift card':'礼品卡','coupon':'优惠券','voucher':'代金券'
+};
+
+function translateItem(name) {
+  if (!name) return '';
+  var n = name.trim().toLowerCase();
+  // Try full match first
+  if (itemTranslations[n]) return itemTranslations[n];
+  // Try partial match (first word)
+  var first = n.split(/[\s,]+/)[0];
+  if (itemTranslations[first]) return itemTranslations[first];
+  // Try matching part of the name
+  for (var key in itemTranslations) {
+    if (n.includes(key) || key.includes(n)) return itemTranslations[key];
+  }
+  return '';
+}
+
+function editTranslation(span) {
+  var current = span.textContent;
+  var input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.style.cssText = 'font-size:11px;padding:1px 4px;border:1px solid var(--primary);border-radius:4px;width:120px;';
+  span.parentElement.replaceChild(input, span);
+  input.focus();
+  input.select();
+  function done() {
+    var val = input.value.trim() || current;
+    var newSpan = document.createElement('span');
+    newSpan.className = 'trans-text';
+    newSpan.style.cssText = 'cursor:pointer;border-bottom:1px dashed var(--gray-300);';
+    newSpan.textContent = val;
+    newSpan.onclick = function() { editTranslation(this); };
+    input.parentElement.replaceChild(newSpan, input);
+  }
+  input.onblur = done;
+  input.onkeydown = function(e) { if (e.key === 'Enter') input.blur(); };
+}
+
+
 // ======================== INIT ========================
 if (typeof Chart === 'undefined') {
   document.getElementById('pageTitle').textContent = '⚠️ Chart.js 加载失败，请刷新重试';
@@ -171,11 +235,9 @@ async function refreshDashboard() {
     const monthlyReceipts = allReceipts.filter(r => r.receipt_date >= firstDay && r.receipt_date <= lastDay);
 
     const totalExpense = monthlyReceipts.reduce((s, r) => s + (r.total_amount || 0), 0);
-    const avgPerReceipt = monthlyReceipts.length ? totalExpense / monthlyReceipts.length : 0;
 
     document.getElementById('statTotal').textContent = '¥' + totalExpense.toFixed(2);
     document.getElementById('statCount').textContent = monthlyReceipts.length;
-    document.getElementById('statAvg').textContent = '¥' + avgPerReceipt.toFixed(2);
 
     // Monthly trend (last 12 months)
     const trendMap = {};
@@ -242,8 +304,8 @@ function renderTrendChart(monthly) {
     return;
   }
   charts.trend = new Chart(ctx, {
-    type: 'bar', data: { labels: monthly.map(m => m.month), datasets: [{ label: '支出', data: monthly.map(m => m.total), backgroundColor: 'rgba(79,70,229,0.7)', borderColor: '#4F46E5', borderWidth: 1, borderRadius: 4 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => '¥' + v } }, x: { grid: { display: false } } } }
+    type: 'bar', data: { labels: monthly.map(m => m.month.replace(/\d{4}-0?/, '') + '月'), datasets: [{ label: '支出', data: monthly.map(m => m.total), backgroundColor: 'rgba(79,70,229,0.7)', borderColor: '#4F46E5', borderWidth: 1, borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => '¥' + v } }, x: { grid: { display: false }, ticks: { maxRotation: 0 } } } }
   });
 }
 
@@ -257,7 +319,7 @@ function renderCategoryChart(categories) {
   const colors = ['#4F46E5', '#F59E0B', '#EF4444', '#10B981', '#8B5CF6', '#EC4899', '#3B82F6', '#14B8A6', '#6366F1', '#F97316', '#22C55E', '#9CA3AF'];
   charts.category = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels: categories.map(c => c.name), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
+    data: { labels: categories.map(c => c.name + '  ¥' + c.total), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } } } }
   });
 }
@@ -272,7 +334,7 @@ function renderAnaCategoryChart(categories) {
   const colors = ['#4F46E5', '#F59E0B', '#EF4444', '#10B981', '#8B5CF6', '#EC4899', '#3B82F6', '#14B8A6', '#6366F1', '#F97316', '#22C55E', '#9CA3AF'];
   charts.anaCategory = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels: categories.map(c => c.name), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
+    data: { labels: categories.map(c => c.name + '  ¥' + c.total), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } } } }
   });
 }
@@ -1001,8 +1063,12 @@ function fillOcrResult(receipt) {
   setFieldWithUncertainty('ocrSubtotal', receipt.subtotal || 0, isUncertain('subtotal'), getQ('subtotal'));
   setFieldWithUncertainty('ocrDiscount', receipt.discount_amount || 0, isUncertain('discount_amount'), getQ('discount_amount'));
   setFieldWithUncertainty('ocrTax', receipt.tax_amount || 0, isUncertain('tax_amount'), getQ('tax_amount'));
-  // Set payment method - try to match dropdown value, add option if no match
+  // Reset payment dropdown to defaults, then select matching
   const paymentEl = document.getElementById('ocrPayment');
+  var defaultPayments = ['','Visa','Mastercard','American Express','Debit Card','现金 Cash','微信支付','支付宝','Gift Card','其他 Other'];
+  paymentEl.innerHTML = defaultPayments.map(function(v) {
+    return '<option value="' + v + '">' + (v || '请选择') + '</option>';
+  }).join('');
   var paymentMethod = receipt.payment_method || '';
   var paymentMatched = false;
   for (var pi = 0; pi < paymentEl.options.length; pi++) {
@@ -1091,6 +1157,10 @@ function addItemRow(item, opts) {
   var nameMarker = nameUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + nameTitle + '>⚠️</span>' : '';
   var priceMarker = priceUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + priceTitle + '>⚠️</span>' : '';
 
+  // Chinese translation hint
+  var translation = translateItem(name);
+  var transHtml = translation ? '<span style="font-size:11px;color:var(--gray-400);grid-column:1/-1;margin-top:-2px;">中文: <span class="trans-text" onclick="editTranslation(this)" style="cursor:pointer;border-bottom:1px dashed var(--gray-300);">' + esc(translation) + '</span> <span style="font-size:10px;color:var(--gray-300);">(点击修改)</span></span>' : '';
+
   var unitHtml = '<select class="ie-unit" onchange="recalcTotal()">';
   for (var ui = 0; ui < unitOptions.length; ui++) {
     unitHtml += '<option value="' + unitOptions[ui] + '" ' + (unit === unitOptions[ui] ? 'selected' : '') + '>' + unitOptions[ui] + '</option>';
@@ -1114,7 +1184,8 @@ function addItemRow(item, opts) {
     '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="recalcTotal()" class="ie-price" style="' + priceStyle + '">',
     priceMarker,
     catHtml,
-    '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>'
+    '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>',
+    transHtml
   ].join('');
   container.appendChild(div);
 }
@@ -1130,6 +1201,8 @@ function recalcTotal() {
   if (taxIncluded) tax = 0;
   var symbol = getCurrencySymbol();
   document.getElementById('ocrCurrencySymbol').textContent = symbol;
+  var taxLabel = document.getElementById('ocrTax').parentElement.querySelector('label');
+  if (taxLabel) taxLabel.textContent = taxIncluded ? '税费(含)' : '税费';
   document.getElementById('ocrTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
 }
 
@@ -1143,8 +1216,12 @@ async function saveOcrReceipt() {
   rows.forEach(row => {
     const name = row.querySelector('.ie-name').value.trim();
     if (!name) return;
+    var transText = '';
+    var transSpan = row.querySelector('.trans-text');
+    if (transSpan) transText = transSpan.textContent;
+    var finalName = transText ? name + ' (' + transText + ')' : name;
     items.push({
-      name,
+      name: finalName,
       quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
       unit_price: parseFloat(row.querySelector('.ie-price').value) || 0,
       total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
@@ -1408,7 +1485,7 @@ async function showReceiptDetail(id) {
     var curSym = currencyMap[r.currency] || '€';
 
     const container = document.getElementById('detailContent');
-    const imgHtml = r.image_url ? `<img src="${r.image_url}" style="max-width:100%;border-radius:8px;margin-bottom:12px;" alt="receipt">` : '';
+    const imgHtml = r.image_url ? `<img src="${r.image_url}" style="max-width:120px;max-height:120px;border-radius:6px;margin-bottom:8px;object-fit:cover;cursor:pointer;" onclick="window.open(this.src)" alt="receipt">` : '';
     container.innerHTML = `
       ${imgHtml}
       <div class="detail-header">
@@ -1482,8 +1559,8 @@ async function editReceipt(id) {
       <h3 style="margin-bottom:16px;">✏️ 编辑账单</h3>
       <div class="form-group"><label>商家名称</label><input id="editStore" value="${esc(r.store_name || '')}"></div>
       <div class="form-row" style="gap:6px;">
-        <div class="form-group"><label>日期</label><input type="date" id="editDate" value="${r.receipt_date || ''}" style="font-size:12px;padding:5px 6px;"></div>
-        <div class="form-group"><label>时间</label><input type="time" id="editTime" value="${r.receipt_time || ''}" style="font-size:12px;padding:5px 6px;"></div>
+        <div class="form-group"><label>日期</label><input type="date" id="editDate" value="${r.receipt_date || ''}" style="font-size:11px;padding:3px 4px;"></div>
+        <div class="form-group"><label>时间</label><input type="time" id="editTime" value="${r.receipt_time || ''}" style="font-size:11px;padding:3px 4px;"></div>
       </div>
       <div class="card-title">🛒 商品明细</div>
       <div id="editItems"></div>
