@@ -272,7 +272,7 @@ function renderRecentReceipts(receipts) {
         <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
       </div>
       <div class="rc-meta">
-        <span>${r.receipt_date || ''}</span>
+        <span>${r.receipt_date || '--'}</span>
         <span>${(r.receipt_items || []).length} 件商品</span>
       </div>
     </div>
@@ -1401,9 +1401,9 @@ async function loadReceiptList(page) {
           <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
         </div>
         <div class="rc-meta">
-          <span>${r.receipt_date || ''}</span>
+          <span>${r.receipt_date || '--'}</span>
           <span>${(r.receipt_items || []).length} 件商品</span>
-          ${r.payment_method ? `<span>${esc(r.payment_method)}</span>` : ''}
+          <span>${esc(r.payment_method) || '--'}</span>
         </div>
       </div>
     `).join('');
