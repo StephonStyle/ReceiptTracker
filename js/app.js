@@ -126,27 +126,6 @@ function translateItem(name) {
   return '';
 }
 
-function editTranslation(span) {
-  var current = span.textContent;
-  var input = document.createElement('input');
-  input.type = 'text';
-  input.value = current;
-  input.style.cssText = 'font-size:11px;padding:1px 4px;border:1px solid var(--primary);border-radius:4px;width:120px;';
-  span.parentElement.replaceChild(input, span);
-  input.focus();
-  input.select();
-  function done() {
-    var val = input.value.trim() || current;
-    var newSpan = document.createElement('span');
-    newSpan.className = 'trans-text';
-    newSpan.style.cssText = 'cursor:pointer;border-bottom:1px dashed var(--gray-300);';
-    newSpan.textContent = val;
-    newSpan.onclick = function() { editTranslation(this); };
-    input.parentElement.replaceChild(newSpan, input);
-  }
-  input.onblur = done;
-  input.onkeydown = function(e) { if (e.key === 'Enter') input.blur(); };
-}
 
 
 // ======================== INIT ========================
@@ -941,7 +920,7 @@ function getOcrPrompt() {
 - discount_amount: 折扣金额（没有则为0）
 - tax_amount: 税费金额（没有则为0）
 - total_amount: 总计/实付金额
-- payment_method: 支付方式
+- payment_method: 支付方式，从以下选项中选最匹配的一个：Visa/Mastercard/American Express/Debit Card/现金/微信支付/支付宝/Gift Card/其他。如有多种支付，选主要的一种。
 - receipt_number: 小票号码/订单号
 
 关键要求：
@@ -1159,9 +1138,12 @@ function addItemRow(item, opts) {
   var nameMarker = nameUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + nameTitle + '>⚠️</span>' : '';
   var priceMarker = priceUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + priceTitle + '>⚠️</span>' : '';
 
-  // Chinese translation hint
+  // Chinese translation: pre-fill name field with "中文 (English)"
   var translation = translateItem(name);
-  var transHtml = translation ? '<span style="font-size:11px;color:var(--gray-400);grid-column:1/-1;margin-top:-2px;">中文: <span class="trans-text" onclick="editTranslation(this)" style="cursor:pointer;border-bottom:1px dashed var(--gray-300);">' + esc(translation) + '</span> <span style="font-size:10px;color:var(--gray-300);">(点击修改)</span></span>' : '';
+  var displayName = name;
+  if (translation && name && !name.includes(translation)) {
+    displayName = translation + ' (' + name + ')';
+  }
 
   var unitHtml = '<select class="ie-unit" onchange="recalcTotal()">';
   for (var ui = 0; ui < unitOptions.length; ui++) {
@@ -1179,15 +1161,14 @@ function addItemRow(item, opts) {
   var div = document.createElement('div');
   div.className = 'item-editor-row';
   div.innerHTML = [
-    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="recalcTotal()" class="ie-name" style="' + nameStyle + '">',
+    '<input type="text" placeholder="商品名称" value="' + esc(displayName) + '" onchange="recalcTotal()" class="ie-name" style="' + nameStyle + '">',
     nameMarker,
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="recalcTotal()" class="ie-qty">',
     unitHtml,
     '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="recalcTotal()" class="ie-price" style="' + priceStyle + '">',
     priceMarker,
     catHtml,
-    '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>',
-    transHtml
+    '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>'
   ].join('');
   container.appendChild(div);
 }
@@ -1218,12 +1199,8 @@ async function saveOcrReceipt() {
   rows.forEach(row => {
     const name = row.querySelector('.ie-name').value.trim();
     if (!name) return;
-    var transText = '';
-    var transSpan = row.querySelector('.trans-text');
-    if (transSpan) transText = transSpan.textContent;
-    var finalName = transText ? name + ' (' + transText + ')' : name;
     items.push({
-      name: finalName,
+      name: name,
       quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
       unit_price: parseFloat(row.querySelector('.ie-price').value) || 0,
       total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
