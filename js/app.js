@@ -144,9 +144,17 @@ function setDefaultDates() {
   const today = new Date().toISOString().split('T')[0];
   const firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
   document.getElementById('manualDate').value = today;
-  ['listStart', 'anaStart', 'exportStart'].forEach(id => {
+  ['listStart', 'exportStart'].forEach(id => {
     document.getElementById(id).value = firstDay;
   });
+}
+
+function setAnalysisDefaultDates() {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  document.getElementById('anaStart').value = firstDay;
+  document.getElementById('anaEnd').value = lastDay;
 }
 
 // ======================== TAB / PAGE NAV ========================
@@ -159,7 +167,7 @@ function switchTab(tab) {
   document.getElementById('pageTitle').textContent = getTitle(tab);
   if (tab === 'dashboard') refreshDashboard();
   if (tab === 'list') searchReceipts();
-  if (tab === 'analysis') refreshAnalysis();
+  if (tab === 'analysis') { setAnalysisDefaultDates(); refreshAnalysis(); }
   if (tab === 'settings') checkApiKeyStatus();
 }
 
@@ -1670,8 +1678,12 @@ async function refreshAnalysis() {
 
   try {
     let allData = await sbGet('receipts', '?select=*,receipt_items(*)&order=receipt_date.asc');
-    if (start) allData = allData.filter(r => r.receipt_date >= start);
-    if (end) allData = allData.filter(r => r.receipt_date <= end);
+    if (start || end) {
+      allData = allData.filter(r => !r.receipt_date || (
+        (!start || r.receipt_date >= start) &&
+        (!end || r.receipt_date <= end)
+      ));
+    }
 
     const totalExpense = allData.reduce((s, r) => s + (r.total_amount || 0), 0);
     const receiptCount = allData.length;
