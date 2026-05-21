@@ -1179,7 +1179,9 @@ function recalcTotal() {
   const rows = document.querySelectorAll('#ocrItems .item-editor-row');
   let total = 0;
   rows.forEach(row => { total += parseFloat(row.querySelector('.ie-price').value) || 0; });
-  const subtotal = parseFloat(document.getElementById('ocrSubtotal').value) || 0;
+  // Auto-update subtotal to match item total
+  document.getElementById('ocrSubtotal').value = total ? total.toFixed(2) : '';
+  const subtotal = total;
   const discount = parseFloat(document.getElementById('ocrDiscount').value) || 0;
   var tax = parseFloat(document.getElementById('ocrTax').value) || 0;
   var taxIncluded = document.getElementById('ocrTaxIncluded').checked;
@@ -1188,16 +1190,8 @@ function recalcTotal() {
   document.getElementById('ocrCurrencySymbol').textContent = symbol;
   var taxLabel = document.getElementById('ocrTax').parentElement.querySelector('label');
   if (taxLabel) taxLabel.textContent = taxIncluded ? '税费(含)' : '税费';
-  document.getElementById('ocrTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
-  // Mismatch warning
-  var diffEl = document.getElementById('ocrTotalMismatch');
-  var adjusted = subtotal + discount;
-  if (diffEl && subtotal && total && Math.abs(total - adjusted) > 0.01) {
-    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，折扣 ¥' + discount.toFixed(2);
-    diffEl.style.display = '';
-  } else if (diffEl) {
-    diffEl.style.display = 'none';
-  }
+  document.getElementById('ocrTotalDisplay').textContent = Math.max(0, subtotal + discount + tax).toFixed(2);
+  document.getElementById('ocrTotalMismatch').style.display = 'none';
 }
 
 async function saveOcrReceipt() {
@@ -1335,21 +1329,16 @@ function calcManualTotal() {
   const rows = document.querySelectorAll('#manualItems .item-editor-row');
   let total = 0;
   rows.forEach(row => { total += parseFloat(row.querySelector('.ie-price').value) || 0; });
-  const subtotal = parseFloat(document.getElementById('manualSubtotal').value) || 0;
+  // Auto-update subtotal to match item total
+  document.getElementById('manualSubtotal').value = total ? total.toFixed(2) : '';
+  const subtotal = total;
   const discount = parseFloat(document.getElementById('manualDiscount').value) || 0;
   const tax = parseFloat(document.getElementById('manualTax').value) || 0;
   var c = document.getElementById('manualCurrency');
   var symbol = c ? (currencyMap[c.value] || '€') : '€';
   document.getElementById('manualCurrencySymbol').textContent = symbol;
-  document.getElementById('manualTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
-  var diffEl = document.getElementById('manualTotalMismatch');
-  var adjusted = subtotal + discount;
-  if (diffEl && subtotal && total && Math.abs(total - adjusted) > 0.01) {
-    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，折扣 ¥' + discount.toFixed(2);
-    diffEl.style.display = '';
-  } else if (diffEl) {
-    diffEl.style.display = 'none';
-  }
+  document.getElementById('manualTotalDisplay').textContent = Math.max(0, subtotal + discount + tax).toFixed(2);
+  document.getElementById('manualTotalMismatch').style.display = 'none';
 }
 
 async function saveManualReceipt() {
@@ -1654,22 +1643,16 @@ function calcEditTotal() {
   const rows = document.querySelectorAll('#editItems .item-editor-row');
   let total = 0;
   rows.forEach(row => { total += parseFloat(row.querySelector('.ie-price').value) || 0; });
-  const subtotal = parseFloat(document.getElementById('editSubtotal').value) || 0;
+  // Auto-update subtotal to match item total
+  document.getElementById('editSubtotal').value = total ? total.toFixed(2) : '';
+  const subtotal = total;
   const discount = parseFloat(document.getElementById('editDiscount').value) || 0;
   const tax = parseFloat(document.getElementById('editTax').value) || 0;
   var c = document.getElementById('editCurrency');
   var symbol = c ? (currencyMap[c.value] || '€') : '€';
   document.getElementById('editCurrencySymbol').textContent = symbol;
-  document.getElementById('editTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
-  // Mismatch warning
-  var diffEl = document.getElementById('editTotalMismatch');
-  var adjusted = subtotal + discount;
-  if (diffEl && subtotal && total && Math.abs(total - adjusted) > 0.01) {
-    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，折扣 ¥' + discount.toFixed(2);
-    diffEl.style.display = '';
-  } else if (diffEl) {
-    diffEl.style.display = 'none';
-  }
+  document.getElementById('editTotalDisplay').textContent = Math.max(0, subtotal + discount + tax).toFixed(2);
+  document.getElementById('editTotalMismatch').style.display = 'none';
 }
 
 async function saveEditReceipt(id) {
