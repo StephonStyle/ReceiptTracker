@@ -1189,6 +1189,14 @@ function recalcTotal() {
   var taxLabel = document.getElementById('ocrTax').parentElement.querySelector('label');
   if (taxLabel) taxLabel.textContent = taxIncluded ? '税费(含)' : '税费';
   document.getElementById('ocrTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
+  // Mismatch warning
+  var diffEl = document.getElementById('ocrTotalMismatch');
+  if (diffEl && subtotal && total && Math.abs(total - subtotal) > 0.01) {
+    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，差 ¥' + Math.abs(total - subtotal).toFixed(2);
+    diffEl.style.display = '';
+  } else if (diffEl) {
+    diffEl.style.display = 'none';
+  }
 }
 
 async function saveOcrReceipt() {
@@ -1333,6 +1341,13 @@ function calcManualTotal() {
   var symbol = c ? (currencyMap[c.value] || '€') : '€';
   document.getElementById('manualCurrencySymbol').textContent = symbol;
   document.getElementById('manualTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
+  var diffEl = document.getElementById('manualTotalMismatch');
+  if (diffEl && subtotal && total && Math.abs(total - subtotal) > 0.01) {
+    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，差 ¥' + Math.abs(total - subtotal).toFixed(2);
+    diffEl.style.display = '';
+  } else if (diffEl) {
+    diffEl.style.display = 'none';
+  }
 }
 
 async function saveManualReceipt() {
@@ -1584,6 +1599,7 @@ async function editReceipt(id) {
       <div class="form-group" style="margin-top:4px;">
         <label style="font-size:16px;font-weight:600;"><span id="editCurrencySymbol">${curSymbol}</span> <span id="editTotalDisplay">${Number(r.total_amount || 0).toFixed(2)}</span></label>
       </div>
+      <div id="editTotalMismatch" style="font-size:11px;color:#D97706;display:none;margin:4px 0;"></div>
       <button class="btn btn-success btn-lg btn-block" onclick="saveEditReceipt(${r.id})">✓ 保存修改</button>
     `;
 
@@ -1643,6 +1659,14 @@ function calcEditTotal() {
   var symbol = c ? (currencyMap[c.value] || '€') : '€';
   document.getElementById('editCurrencySymbol').textContent = symbol;
   document.getElementById('editTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
+  // Mismatch warning
+  var diffEl = document.getElementById('editTotalMismatch');
+  if (diffEl && subtotal && total && Math.abs(total - subtotal) > 0.01) {
+    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，差 ¥' + Math.abs(total - subtotal).toFixed(2);
+    diffEl.style.display = '';
+  } else if (diffEl) {
+    diffEl.style.display = 'none';
+  }
 }
 
 async function saveEditReceipt(id) {
