@@ -1191,8 +1191,9 @@ function recalcTotal() {
   document.getElementById('ocrTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
   // Mismatch warning
   var diffEl = document.getElementById('ocrTotalMismatch');
-  if (diffEl && subtotal && total && Math.abs(total - subtotal) > 0.01) {
-    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，差 ¥' + Math.abs(total - subtotal).toFixed(2);
+  var adjusted = subtotal + discount;
+  if (diffEl && subtotal && total && Math.abs(total - adjusted) > 0.01) {
+    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，折扣 ¥' + discount.toFixed(2);
     diffEl.style.display = '';
   } else if (diffEl) {
     diffEl.style.display = 'none';
@@ -1342,8 +1343,9 @@ function calcManualTotal() {
   document.getElementById('manualCurrencySymbol').textContent = symbol;
   document.getElementById('manualTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
   var diffEl = document.getElementById('manualTotalMismatch');
-  if (diffEl && subtotal && total && Math.abs(total - subtotal) > 0.01) {
-    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，差 ¥' + Math.abs(total - subtotal).toFixed(2);
+  var adjusted = subtotal + discount;
+  if (diffEl && subtotal && total && Math.abs(total - adjusted) > 0.01) {
+    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，折扣 ¥' + discount.toFixed(2);
     diffEl.style.display = '';
   } else if (diffEl) {
     diffEl.style.display = 'none';
@@ -1661,8 +1663,9 @@ function calcEditTotal() {
   document.getElementById('editTotalDisplay').textContent = Math.max(0, (subtotal || total) + discount + tax).toFixed(2);
   // Mismatch warning
   var diffEl = document.getElementById('editTotalMismatch');
-  if (diffEl && subtotal && total && Math.abs(total - subtotal) > 0.01) {
-    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，差 ¥' + Math.abs(total - subtotal).toFixed(2);
+  var adjusted = subtotal + discount;
+  if (diffEl && subtotal && total && Math.abs(total - adjusted) > 0.01) {
+    diffEl.textContent = '⚠ 商品合计 ¥' + total.toFixed(2) + '，小计 ¥' + subtotal.toFixed(2) + '，折扣 ¥' + discount.toFixed(2);
     diffEl.style.display = '';
   } else if (diffEl) {
     diffEl.style.display = 'none';
