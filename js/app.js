@@ -126,9 +126,12 @@ function translateItem(name) {
   return '';
 }
 
-
-
-// ======================== INIT ========================
+function parseStoredName(s) {
+  if (!s) return { cn: '', en: '' };
+  var m = s.match(/^(.+?)\s*\((.+)\)$/);
+  if (m) return { cn: m[1].trim(), en: m[2].trim() };
+  return { cn: s, en: s };
+}
 if (typeof Chart === 'undefined') {
   document.getElementById('pageTitle').textContent = '⚠️ Chart.js 加载失败，请刷新重试';
 }
@@ -913,7 +916,8 @@ function getOcrPrompt() {
 - receipt_date: 日期（格式 YYYY-MM-DD）
 - receipt_time: 时间（格式 HH:MM）
 - items: 商品列表，每项包含：
-  - name: 商品名称
+  - name: 商品原文名称（保持收据上的原文，通常是英文）
+  - name_cn: 根据商品原文翻译成中文，如果是英文则翻译为中文，如果是中文则保留
   - quantity: 数量（数字，默认为1）
   - unit_price: 单价（数字，如果没有单价则和total_price相同）
   - total_price: 该商品总价
@@ -950,7 +954,7 @@ function getOcrPrompt() {
   "receipt_date": "2024-01-15",
   "receipt_time": "14:30",
   "items": [
-    {"name": "可口可乐", "quantity": 2, "unit_price": 3.5, "total_price": 7.0, "category_name": "餐饮美食"}
+    {"name": "可口可乐", "name_cn": "可口可乐", "quantity": 2, "unit_price": 3.5, "total_price": 7.0, "category_name": "餐饮美食"}
   ],
   "subtotal": 100.0,
   "discount_amount": -5.0,
@@ -1000,52 +1004,16 @@ function fileToBase64(file) {
 
 function fillOcrResult(receipt) {
   const uncertain = new Set(receipt.uncertain_fields || []);
-  const questions = receipt.uncertain_questions || {};
 
   function isUncertain(path) { return uncertain.has(path); }
-  function getQ(path) { return questions[path] || ''; }
 
-  // Show uncertain questions summary at top
-  const qList = Object.entries(questions);
-  const qHtml = qList.length ? `
-    <div style="background:#FEF3C7;border-radius:8px;padding:12px;margin-bottom:16px;">
-      <div style="font-weight:600;color:#92400E;margin-bottom:6px;">⚠️ 需确认：</div>
-      ${qList.map(([path, q]) => `<div style="font-size:13px;color:#92400E;padding:2px 0;">• ${q}</div>`).join('')}
-    </div>
-  ` : '';
-
-  // More specific: if many items were detected but some are uncertain, show targeted prompts
-  const uncertainItemNames = (receipt.items || []).map((item, i) => {
-    if (isUncertain('items[' + i + '].name')) return i;
-    return -1;
-  }).filter(i => i >= 0);
-  const uncertainItemPrices = (receipt.items || []).map((item, i) => {
-    if (isUncertain('items[' + i + '].total_price')) return i;
-    return -1;
-  }).filter(i => i >= 0);
-
-  // Prepend the questions banner to the review area
-  const reviewHeader = document.querySelector('.receipt-review .review-header');
-  if (reviewHeader && qHtml) {
-    // Insert after review-header
-    let next = reviewHeader.nextElementSibling;
-    // Check if already inserted
-    const existingBanner = document.querySelector('.uncertain-banner');
-    if (!existingBanner) {
-      const bannerDiv = document.createElement('div');
-      bannerDiv.className = 'uncertain-banner';
-      bannerDiv.innerHTML = qHtml;
-      reviewHeader.after(bannerDiv);
-    }
-  }
-
-  // Fill form fields, marking uncertain ones
-  setFieldWithUncertainty('ocrStore', receipt.store_name || '', isUncertain('store_name'), getQ('store_name'));
-  setFieldWithUncertainty('ocrDate', receipt.receipt_date || '', isUncertain('receipt_date'), getQ('receipt_date'));
-  setFieldWithUncertainty('ocrTime', receipt.receipt_time || '', isUncertain('receipt_time'), getQ('receipt_time'));
-  setFieldWithUncertainty('ocrSubtotal', receipt.subtotal || 0, isUncertain('subtotal'), getQ('subtotal'));
-  setFieldWithUncertainty('ocrDiscount', receipt.discount_amount || 0, isUncertain('discount_amount'), getQ('discount_amount'));
-  setFieldWithUncertainty('ocrTax', receipt.tax_amount || 0, isUncertain('tax_amount'), getQ('tax_amount'));
+  // Fill form fields, marking uncertain ones with subtle indicator
+  setFieldWithUncertainty('ocrStore', receipt.store_name || '', isUncertain('store_name'));
+  setFieldWithUncertainty('ocrDate', receipt.receipt_date || '', isUncertain('receipt_date'));
+  setFieldWithUncertainty('ocrTime', receipt.receipt_time || '', isUncertain('receipt_time'));
+  setFieldWithUncertainty('ocrSubtotal', receipt.subtotal || 0, isUncertain('subtotal'));
+  setFieldWithUncertainty('ocrDiscount', receipt.discount_amount || 0, isUncertain('discount_amount'));
+  setFieldWithUncertainty('ocrTax', receipt.tax_amount || 0, isUncertain('tax_amount'));
   // Reset payment dropdown to defaults, then select matching
   const paymentEl = document.getElementById('ocrPayment');
   var defaultPayments = ['','Visa','Mastercard','American Express','Debit Card','现金 Cash','微信支付','支付宝','Gift Card','其他 Other'];
@@ -1071,14 +1039,9 @@ function fillOcrResult(receipt) {
 
   const container = document.getElementById('ocrItems');
   container.innerHTML = '';
-  const items = (receipt.items && receipt.items.length) ? receipt.items : [{ name: '', quantity: 1, unit_price: 0, total_price: 0, category_name: '其他' }];
+  const items = (receipt.items && receipt.items.length) ? receipt.items : [{ name: '', name_cn: '', quantity: 1, unit_price: 0, total_price: 0, category_name: '其他' }];
   items.forEach((item, i) => {
-    addItemRow(item, {
-      nameUncertain: isUncertain('items[' + i + '].name'),
-      priceUncertain: isUncertain('items[' + i + '].total_price'),
-      nameQ: getQ('items[' + i + '].name'),
-      priceQ: getQ('items[' + i + '].total_price'),
-    });
+    addItemRow(item);
   });
   recalcTotal();
 }
@@ -1122,30 +1085,12 @@ function setFieldWithUncertainty(id, value, uncertain, question) {
 
 function addItemRow(item, opts) {
   var container = document.getElementById('ocrItems');
-  var name = item ? item.name || '' : '';
+  var nameEn = item ? item.name || '' : '';
+  var nameCn = (item && item.name_cn) ? item.name_cn : translateItem(nameEn);
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
   var unit = (item && item.unit) || '个';
-  var nameUncertain = opts && opts.nameUncertain;
-  var priceUncertain = opts && opts.priceUncertain;
-  var nameQ = (opts && opts.nameQ) || '';
-  var priceQ = (opts && opts.priceQ) || '';
-
-  var nameStyle = nameUncertain ? 'border-color:#F59E0B;background:#FFFBEB;' : '';
-  var priceStyle = priceUncertain ? 'border-color:#F59E0B;background:#FFFBEB;' : '';
-  var nameTitle = nameUncertain && nameQ ? 'title="' + esc(nameQ) + '"' : '';
-  var priceTitle = priceUncertain && priceQ ? 'title="' + esc(priceQ) + '"' : '';
-
-  var nameMarker = nameUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + nameTitle + '>⚠️</span>' : '';
-  var priceMarker = priceUncertain ? '<span style="color:#D97706;font-size:12px;cursor:help;" ' + priceTitle + '>⚠️</span>' : '';
-
-  // Chinese translation: pre-fill name field with "中文 (English)"
-  var translation = translateItem(name);
-  var displayName = name;
-  if (translation && name && !name.includes(translation)) {
-    displayName = translation + ' (' + name + ')';
-  }
 
   var unitHtml = '<select class="ie-unit" onchange="recalcTotal()">';
   for (var ui = 0; ui < unitOptions.length; ui++) {
@@ -1163,12 +1108,13 @@ function addItemRow(item, opts) {
   var div = document.createElement('div');
   div.className = 'item-editor-row';
   div.innerHTML = [
-    '<input type="text" placeholder="商品名称" value="' + esc(displayName) + '" onchange="recalcTotal()" class="ie-name" style="' + nameStyle + '">',
-    nameMarker,
+    '<div class="ie-name-row">',
+    '<input type="text" placeholder="中文名称" value="' + esc(nameCn) + '" onchange="recalcTotal()" class="ie-name-cn">',
+    '<input type="text" placeholder="English name" value="' + esc(nameEn) + '" onchange="recalcTotal()" class="ie-name-en">',
+    '</div>',
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="recalcTotal()" class="ie-qty">',
     unitHtml,
-    '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="recalcTotal()" class="ie-price" style="' + priceStyle + '">',
-    priceMarker,
+    '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="recalcTotal()" class="ie-price">',
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>'
   ].join('');
@@ -1203,10 +1149,10 @@ async function saveOcrReceipt() {
     const rows = document.querySelectorAll('#ocrItems .item-editor-row');
     const items = [];
     rows.forEach(row => {
-      const nameEl = row.querySelector('.ie-name');
-      if (!nameEl) return;
-      const name = nameEl.value.trim();
-      if (!name) return;
+      const nameCn = (row.querySelector('.ie-name-cn')?.value || '').trim();
+      const nameEn = (row.querySelector('.ie-name-en')?.value || '').trim();
+      if (!nameCn && !nameEn) return;
+      const name = nameEn ? (nameCn ? nameCn + ' (' + nameEn + ')' : nameEn) : nameCn;
       items.push({
         name: name,
         quantity: parseFloat(row.querySelector('.ie-qty')?.value) || 1,
@@ -1296,7 +1242,10 @@ function retakePhoto() {
 // ======================== MANUAL ENTRY ========================
 function addManualItemRow(item) {
   const container = document.getElementById('manualItems');
-  var name = item ? item.name || '' : '';
+  var nameEn = item ? item.name || '' : '';
+  var nameCn = '';
+  if (item && item.name_cn) nameCn = item.name_cn;
+  else if (item) nameCn = translateItem(item.name);
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
@@ -1315,7 +1264,10 @@ function addManualItemRow(item) {
   }
   catHtml += '</select>';
   div.innerHTML = [
-    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="calcManualTotal()" class="ie-name">',
+    '<div class="ie-name-row">',
+    '<input type="text" placeholder="中文名称" value="' + esc(nameCn) + '" onchange="calcManualTotal()" class="ie-name-cn">',
+    '<input type="text" placeholder="English name" value="' + esc(nameEn) + '" onchange="calcManualTotal()" class="ie-name-en">',
+    '</div>',
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="calcManualTotal()" class="ie-qty">',
     unitHtml,
     '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="calcManualTotal()" class="ie-price">',
@@ -1345,8 +1297,10 @@ async function saveManualReceipt() {
   const rows = document.querySelectorAll('#manualItems .item-editor-row');
   const items = [];
   rows.forEach(row => {
-    const name = row.querySelector('.ie-name').value.trim();
-    if (!name) return;
+    const nameCn = (row.querySelector('.ie-name-cn')?.value || '').trim();
+    const nameEn = (row.querySelector('.ie-name-en')?.value || '').trim();
+    if (!nameCn && !nameEn) return;
+    const name = nameEn ? (nameCn ? nameCn + ' (' + nameEn + ')' : nameEn) : nameCn;
     items.push({
       name,
       quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
@@ -1610,7 +1564,9 @@ async function editReceipt(id) {
 
 function addEditItemRow(item) {
   const container = document.getElementById('editItems');
-  var name = item ? item.name || '' : '';
+  var parsed = parseStoredName(item ? item.name || '' : '');
+  var nameCn = parsed.cn;
+  var nameEn = parsed.en;
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
@@ -1629,7 +1585,10 @@ function addEditItemRow(item) {
   }
   catHtml += '</select>';
   div.innerHTML = [
-    '<input type="text" placeholder="商品名称" value="' + esc(name) + '" onchange="calcEditTotal()" class="ie-name">',
+    '<div class="ie-name-row">',
+    '<input type="text" placeholder="中文名称" value="' + esc(nameCn) + '" onchange="calcEditTotal()" class="ie-name-cn">',
+    '<input type="text" placeholder="English name" value="' + esc(nameEn) + '" onchange="calcEditTotal()" class="ie-name-en">',
+    '</div>',
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="calcEditTotal()" class="ie-qty">',
     unitHtml,
     '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="calcEditTotal()" class="ie-price">',
@@ -1659,8 +1618,10 @@ async function saveEditReceipt(id) {
   const rows = document.querySelectorAll('#editItems .item-editor-row');
   const items = [];
   rows.forEach(row => {
-    const name = row.querySelector('.ie-name').value.trim();
-    if (!name) return;
+    const nameCn = (row.querySelector('.ie-name-cn')?.value || '').trim();
+    const nameEn = (row.querySelector('.ie-name-en')?.value || '').trim();
+    if (!nameCn && !nameEn) return;
+    const name = nameEn ? (nameCn ? nameCn + ' (' + nameEn + ')' : nameEn) : nameCn;
     items.push({
       name, quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
       total_price: parseFloat(row.querySelector('.ie-price').value) || 0,

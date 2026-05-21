@@ -495,7 +495,16 @@ body {
   background: var(--gray-50);
   border-radius: 8px;
 }
-.item-editor-row .ie-name { grid-column: 1 / -1; margin-bottom: 2px; }
+.item-editor-row .ie-name-row {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.item-editor-row .ie-name-row input {
+  flex: 1;
+  min-width: 0;
+}
 .item-editor-row .ie-qty { }
 .item-editor-row .ie-unit { }
 .item-editor-row .ie-price { }
