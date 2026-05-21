@@ -1584,16 +1584,18 @@ async function editReceipt(id) {
         </div>
         <div class="form-group"><label>支付方式</label>
           <select id="editPayment" style="font-size:13px;padding:8px;">
-            <option value="">请选择</option>
-            <option value="Visa" ${r.payment_method==='Visa'?'selected':''}>Visa</option>
-            <option value="Mastercard" ${r.payment_method==='Mastercard'?'selected':''}>Mastercard</option>
-            <option value="American Express" ${r.payment_method==='American Express'?'selected':''}>American Express</option>
-            <option value="Debit Card" ${r.payment_method==='Debit Card'?'selected':''}>Debit Card</option>
-            <option value="现金 Cash" ${r.payment_method==='现金 Cash'?'selected':''}>现金 Cash</option>
-            <option value="微信支付" ${r.payment_method==='微信支付'?'selected':''}>微信支付</option>
-            <option value="支付宝" ${r.payment_method==='支付宝'?'selected':''}>支付宝</option>
-            <option value="Gift Card" ${r.payment_method==='Gift Card'?'selected':''}>Gift Card</option>
-            <option value="其他 Other" ${r.payment_method==='其他 Other'?'selected':''}>其他</option>
+            ${function(){
+              var defs = ['','Visa','Mastercard','American Express','Debit Card','现金 Cash','微信支付','支付宝','Gift Card','其他 Other'];
+              var matched = defs.some(function(p){ return p === (r.payment_method||''); });
+              var h = defs.map(function(p){
+                var sel = (r.payment_method||'') === p ? 'selected' : '';
+                return '<option value="'+p+'" '+sel+'>'+(p||'请选择')+'</option>';
+              }).join('');
+              if ((r.payment_method||'') && !matched) {
+                h += '<option value="'+esc(r.payment_method)+'" selected>'+esc(r.payment_method)+'</option>';
+              }
+              return h;
+            }()}
           </select>
         </div>
       </div>
