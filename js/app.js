@@ -188,6 +188,8 @@ function navigateTo(page) {
     document.getElementById('page-' + page).classList.add('active');
     document.getElementById('pageTitle').textContent = page === 'add' ? '拍照记账' : '手动录入';
     currentPage = page;
+  } else {
+    switchTab(page);
   }
 }
 
