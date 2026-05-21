@@ -513,6 +513,8 @@ function handleFileSelect(event) {
 }
 
 function renderUploadGallery(area) {
+  // Remove the upload-area click handler to prevent gallery buttons from triggering file picker
+  area.onclick = null;
   var files = currentOcrFiles;
   var html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:12px;">';
   var loadPromises = files.map(function(file, i) {
@@ -533,9 +535,9 @@ function renderUploadGallery(area) {
   Promise.all(loadPromises).then(function() {
     html += '</div>';
     if (files.length > 1) {
-      html += '<button class="btn btn-primary btn-lg btn-block" onclick="startAllOcr()" style="margin-bottom:6px;">🚀 全部识别 (' + files.length + '张)</button>';
+      html += '<button class="btn btn-primary btn-lg btn-block" onclick="event.stopPropagation();startAllOcr()" style="margin-bottom:6px;">🚀 全部识别 (' + files.length + '张)</button>';
     } else {
-      html += '<button class="btn btn-primary btn-lg btn-block" onclick="startOcr()" style="margin-bottom:6px;">🚀 开始识别</button>';
+      html += '<button class="btn btn-primary btn-lg btn-block" onclick="event.stopPropagation();startOcr()" style="margin-bottom:6px;">🚀 开始识别</button>';
     }
     html += '<div style="display:flex;gap:8px;">';
     html += '<button class="btn btn-outline" style="flex:1;" onclick="event.stopPropagation();document.getElementById(\'fileInput\').click()">📷 继续添加</button>';
@@ -1281,6 +1283,7 @@ function retakePhoto() {
   area.innerHTML = '<div class="upload-icon">📸</div><div class="upload-text">点击拍照或选择图片</div><div class="upload-hint">支持 JPG / PNG 格式</div>';
   area.classList.remove('has-image');
   area.style.cssText = '';
+  area.onclick = function() { document.getElementById('fileInput').click(); };
   currentOcrImageFile = null;
   currentOcrFiles = [];
 }
@@ -1407,8 +1410,8 @@ async function loadReceiptList(page) {
     let allData = await sbGet('receipts', '?select=*,receipt_items(*)&order=receipt_date.desc.nullslast,id.desc');
 
     // Client-side filtering
-    if (start) allData = allData.filter(r => r.receipt_date >= start);
-    if (end) allData = allData.filter(r => r.receipt_date <= end);
+    if (start) allData = allData.filter(r => !r.receipt_date || r.receipt_date >= start);
+    if (end) allData = allData.filter(r => !r.receipt_date || r.receipt_date <= end);
     if (kw) {
       const kwl = kw.toLowerCase();
       allData = allData.filter(r =>
