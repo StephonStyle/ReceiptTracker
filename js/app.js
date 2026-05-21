@@ -562,7 +562,7 @@ async function startOcr(fileIndex) {
   var provider = getProvider();
   diag('OCR开始: provider=' + provider + ', key=' + (apiKey ? apiKey.slice(0, 8) + '...' : '无'));
   if (!apiKey) {
-    showToast('请先在设置中配置 ' + getProviderName() + ' API Key', 'error');
+    showToast('请先设置 API Key', 'error');
     document.querySelector('.tab[data-page="settings"]').style.animation = 'pulse-warning 0.5s ease-in-out 3';
     setTimeout(function() {
       document.querySelector('.tab[data-page="settings"]').style.animation = '';
@@ -931,16 +931,16 @@ function getOcrPrompt() {
 3. 商品名称保持原文
 4. 所有字段都必须出现在JSON中
 5. 只返回JSON，不要有额外的说明文字
-6. **非常重要**：如果你对某个字段的值不确定（比如图片模糊、遮挡、不清晰），不要胡乱猜测。请将该字段的值设为空字符串或0，并在下面的 uncertain_fields 中列出该字段路径，同时用中文描述为什么不确定。
+6. **非常重要**：如果不确定某个字段，设为空/0，并在下面列出。
 
 除了上面的数据字段外，请在JSON根部额外包含：
 - "uncertain_fields": 一个数组，列出你不确定的字段路径，例如 ["store_name", "items[1].name", "total_amount"]
 - "uncertain_questions": 一个对象，key为字段路径，value为你想问用户的中文问题，例如：
   {
-    "store_name": "商家名称看不清楚，请问是哪家店？",
-    "items[2].name": "第3个商品名称模糊，请问是什么商品？",
-    "items[1].total_price": "第2个商品价格看不清，请问是多少钱？",
-    "total_amount": "总计金额模糊，请问实际付了多少？"
+    "store_name": "商家名称？",
+    "items[2].name": "商品3名称？",
+    "items[1].total_price": "商品2价格？",
+    "total_amount": "总计金额？"
   }
 
 返回格式示例：
@@ -1009,7 +1009,7 @@ function fillOcrResult(receipt) {
   const qList = Object.entries(questions);
   const qHtml = qList.length ? `
     <div style="background:#FEF3C7;border-radius:8px;padding:12px;margin-bottom:16px;">
-      <div style="font-weight:600;color:#92400E;margin-bottom:6px;">⚠️ 以下内容没太看清，需要你确认：</div>
+      <div style="font-weight:600;color:#92400E;margin-bottom:6px;">⚠️ 需确认：</div>
       ${qList.map(([path, q]) => `<div style="font-size:13px;color:#92400E;padding:2px 0;">• ${q}</div>`).join('')}
     </div>
   ` : '';
@@ -1114,7 +1114,7 @@ function setFieldWithUncertainty(id, value, uncertain, question) {
       el.after(marker);
     }
     marker.textContent = '⚠️';
-    marker.title = question || '此项不确定，请核实';
+    marker.title = question || '不确定';
   } else if (marker) {
     marker.remove();
   }
@@ -1196,37 +1196,39 @@ async function saveOcrReceipt() {
   btn.disabled = true;
   btn.textContent = '⏳ 保存中...';
 
-  const rows = document.querySelectorAll('#ocrItems .item-editor-row');
-  const items = [];
-  rows.forEach(row => {
-    const name = row.querySelector('.ie-name').value.trim();
-    if (!name) return;
-    items.push({
-      name: name,
-      quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
-      unit_price: parseFloat(row.querySelector('.ie-price').value) || 0,
-      total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
-      category_name: row.querySelector('.ie-cat').value || '其他',
-      unit: row.querySelector('.ie-unit').value || '个'
-    });
-  });
-
-  if (!items.length) {
-    showToast('请至少添加一个商品', 'error');
-    btn.disabled = false;
-    btn.textContent = '✓ 确认保存';
-    return;
-  }
-
-  const discount = parseFloat(document.getElementById('ocrDiscount').value) || 0;
-  var tax = parseFloat(document.getElementById('ocrTax').value) || 0;
-  var taxIncluded = document.getElementById('ocrTaxIncluded').checked;
-  if (taxIncluded) tax = 0;
-  const subtotal = parseFloat(document.getElementById('ocrSubtotal').value) || 0;
-  const itemTotal = items.reduce((s, i) => s + i.total_price, 0);
-  const needsReview = document.getElementById('ocrNeedsReview').checked;
-
   try {
+    const rows = document.querySelectorAll('#ocrItems .item-editor-row');
+    const items = [];
+    rows.forEach(row => {
+      const nameEl = row.querySelector('.ie-name');
+      if (!nameEl) return;
+      const name = nameEl.value.trim();
+      if (!name) return;
+      items.push({
+        name: name,
+        quantity: parseFloat(row.querySelector('.ie-qty')?.value) || 1,
+        unit_price: parseFloat(row.querySelector('.ie-price')?.value) || 0,
+        total_price: parseFloat(row.querySelector('.ie-price')?.value) || 0,
+        category_name: row.querySelector('.ie-cat')?.value || '其他',
+        unit: row.querySelector('.ie-unit')?.value || '个'
+      });
+    });
+
+    if (!items.length) {
+      showToast('请至少添加一个商品', 'error');
+      btn.disabled = false;
+      btn.textContent = '✓ 确认保存';
+      return;
+    }
+
+    const discount = parseFloat(document.getElementById('ocrDiscount')?.value) || 0;
+    var tax = parseFloat(document.getElementById('ocrTax')?.value) || 0;
+    var taxIncluded = document.getElementById('ocrTaxIncluded')?.checked || false;
+    if (taxIncluded) tax = 0;
+    const subtotal = parseFloat(document.getElementById('ocrSubtotal')?.value) || 0;
+    const itemTotal = items.reduce((s, i) => s + i.total_price, 0);
+    const needsReview = document.getElementById('ocrNeedsReview')?.checked || false;
+
     let imageUrl = '';
     if (currentOcrImageFile) {
       try {
@@ -1239,14 +1241,14 @@ async function saveOcrReceipt() {
     }
 
     const receiptData = {
-      store_name: document.getElementById('ocrStore').value.trim(),
-      receipt_date: document.getElementById('ocrDate').value,
-      receipt_time: document.getElementById('ocrTime').value,
+      store_name: (document.getElementById('ocrStore')?.value || '').trim(),
+      receipt_date: document.getElementById('ocrDate')?.value || '',
+      receipt_time: document.getElementById('ocrTime')?.value || '',
       total_amount: Math.max(0, (subtotal || itemTotal) + discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
-      payment_method: document.getElementById('ocrPayment').value,
+      payment_method: document.getElementById('ocrPayment')?.value || '',
       notes: needsReview ? '需后续修改' : '',
       image_url: imageUrl,
     };
