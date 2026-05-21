@@ -213,7 +213,7 @@ async function refreshDashboard() {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
     const allReceipts = await sbGet('receipts', '?select=*,receipt_items(*)&order=receipt_date.desc.nullslast');
-    const monthlyReceipts = allReceipts.filter(r => r.receipt_date >= firstDay && r.receipt_date <= lastDay);
+    const monthlyReceipts = allReceipts.filter(r => !r.receipt_date || (r.receipt_date >= firstDay && r.receipt_date <= lastDay));
 
     const totalExpense = monthlyReceipts.reduce((s, r) => s + (r.total_amount || 0), 0);
 
@@ -238,7 +238,7 @@ async function refreshDashboard() {
 
     // Category breakdown
     const catMap = {};
-    allReceipts.filter(r => r.receipt_date >= firstDay).forEach(r => {
+    allReceipts.filter(r => !r.receipt_date || r.receipt_date >= firstDay).forEach(r => {
       (r.receipt_items || []).forEach(item => {
         const cat = item.category_name || '未分类';
         catMap[cat] = (catMap[cat] || 0) + (item.total_price || 0);
