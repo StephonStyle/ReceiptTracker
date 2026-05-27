@@ -563,7 +563,7 @@ function renderUploadGallery(area) {
         html += '<div style="position:relative;border-radius:8px;overflow:hidden;border:2px solid var(--gray-200);">';
         html += '<img src="' + e.target.result + '" style="width:100%;height:120px;object-fit:cover;display:block;" alt="photo ' + (i+1) + '">';
         html += '<div style="position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.6);color:white;font-size:11px;padding:2px 6px;border-radius:4px;">#' + (i+1) + '</div>';
-        html += '<button class="btn btn-sm btn-primary" style="position:absolute;bottom:4px;right:4px;font-size:11px;padding:4px 8px;" onclick="event.stopPropagation();startOcr(' + i + ')">识别</button>';
+        html += '<button class="btn btn-sm btn-primary" style="position:absolute;bottom:4px;right:4px;font-size:13px;padding:6px 12px;" onclick="event.stopPropagation();startOcr(' + i + ')">🔍 识别</button>';
         html += '</div>';
         resolve();
       };
@@ -1206,7 +1206,13 @@ function addItemRow(item, opts) {
   var nameEn = item ? (item.name_en || item.name || '') : '';
   var nameCn = (item && item.name_cn) ? item.name_cn : translateItem(nameEn || (item ? item.name : ''));
   var brand = (item && item.brand_name) || '';
-  var qty = item ? item.quantity || 1 : 1;
+  var qty = item ? item.quantity || 1 : 1;
+  if (brand && nameEn && nameEn.toLowerCase().startsWith(brand.toLowerCase())) {
+    nameEn = nameEn.substring(brand.length).trim();
+  }
+  if (brand && nameCn && nameCn.toLowerCase().startsWith(brand.toLowerCase())) {
+    nameCn = nameCn.substring(brand.length).trim();
+  }
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
   if (cat === '超市购物' && item && item.sub_category) {
@@ -1247,8 +1253,8 @@ function addItemRow(item, opts) {
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>'
   ,
-    (itemDiscAmt ? '<div class="item-discount-line" style="font-size:11px;color:#EF9A9A;padding:2px 0 4px 0;">商品折扣: −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</div>' : ''),
-    (itemDiscAmt ? '<div class="item-discount-line" style="font-size:11px;color:#EF9A9A;padding:2px 0 4px 0;">商品折扣: −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</div>' : '')].join('');
+    (itemDiscAmt ? '<span style="font-size:11px;color:#EF9A9A;margin-left:6px;">折扣 −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</span>' : ''),
+    (itemDiscAmt ? '<span style="font-size:11px;color:#EF9A9A;margin-left:6px;">折扣 −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</span>' : '')].join('');
   container.appendChild(div);
 }
 
@@ -1398,6 +1404,9 @@ function addManualItemRow(item) {
   var brand = (item && item.brand_name) || '';
   if (brand && nameEn && nameEn.toLowerCase().startsWith(brand.toLowerCase())) {
     nameEn = nameEn.substring(brand.length).trim();
+  }
+  if (brand && nameCn && nameCn.toLowerCase().startsWith(brand.toLowerCase())) {
+    nameCn = nameCn.substring(brand.length).trim();
   }
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
@@ -1642,7 +1651,7 @@ async function showReceiptDetail(id) {
                   <span class="item-qty">×${i.quantity}${i.unit ? i.unit : ''}</span>
                   <span class="item-price">${curSym}${Number(i.total_price).toFixed(2)}</span>
                 </div>
-                ${itemDiscount ? '<div class="item-discount-line" style="font-size:12px;color:#EF9A9A;margin-top:2px;">折扣 −' + curSym + itemDiscount.toFixed(2) + (itemDiscountReason ? ' (' + esc(itemDiscountReason) + ')' : '') + '</div>' : ''}
+                ${itemDiscount ? '<span style="margin-left:8px;font-size:11px;color:#EF9A9A;">折扣 −' + curSym + itemDiscount.toFixed(2) + (itemDiscountReason ? ' (' + esc(itemDiscountReason) + ')' : '') + '</span>' : ''}
               </li>`;
             }).join('')}
           </ul>
@@ -1796,6 +1805,9 @@ function addEditItemRow(item) {
   if (brand && nameEn && nameEn.toLowerCase().startsWith(brand.toLowerCase())) {
     nameEn = nameEn.substring(brand.length).trim();
   }
+  if (brand && nameCn && nameCn.toLowerCase().startsWith(brand.toLowerCase())) {
+    nameCn = nameCn.substring(brand.length).trim();
+  }
   // Fallback: parse from old combined format
   if (!nameEn && !nameCn && item && item.name) {
     var parsed = parseStoredName(item.name);
@@ -1837,7 +1849,7 @@ function addEditItemRow(item) {
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();calcEditTotal()" title="删除此行">✕</button>'
   ,
-    (itemDiscAmt ? '<div class="item-discount-line" style="font-size:11px;color:#EF9A9A;padding:2px 0 4px 0;">商品折扣: −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</div>' : '')].join('');
+    (itemDiscAmt ? '<span style="font-size:11px;color:#EF9A9A;margin-left:6px;">折扣 −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</span>' : '')].join('');
   container.appendChild(div);
 }
 
