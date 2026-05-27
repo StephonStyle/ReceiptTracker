@@ -1032,6 +1032,7 @@ function getOcrPrompt() {
   - discount_amount: 该商品的折扣金额（没有则为0）
   - discount_reason: 该商品的折扣原因或说明（没有则为空字符串）
   - quantity: 数量（数字，默认为1）
+  - unit: 单位（根据商品类型选择最合适的，如瓶/盒/袋/包/罐/杯/只/条/双/份/箱/件/打/板；饮料用"瓶"或"罐"，零食用"袋"或"包"，宠物食品用"罐"或"袋"，坚果用"袋"或"包"，蔬菜水果用"个"或"袋"，肉类海鲜用"份"或"盒"等）
   - unit_price: 单价（数字，如果没有单价则和total_price相同）
   - total_price: 该商品总价
   - category_name: 根据商品名称判断类别（餐饮美食/超市购物/交通出行/日用百货/数码电子/医疗健康/其他）；如果是超市购物，在 sub_category 字段填写更细的分类如坚果、蔬菜、宠物食品、糕点面包、饮料、乳制品、肉类海鲜、水果、零食、日用品等
@@ -1052,6 +1053,7 @@ function getOcrPrompt() {
 5. 所有字段都必须出现在JSON中
 6. 只返回JSON，不要有额外的说明文字
 7. **非常重要**：如果不确定某个字段，设为空/0，并在下面列出。
+8. **非常重要**：items 中每项必须包含 discount_amount、discount_reason、sub_category（超市购物类必填）、unit 字段
 
 除了上面的数据字段外，请在JSON根部额外包含：
 - "uncertain_fields": 一个数组，列出你不确定的字段路径，例如 ["store_name", "items[1].name", "total_amount"]
@@ -1070,7 +1072,7 @@ function getOcrPrompt() {
   "receipt_date": "2024-01-15",
   "receipt_time": "14:30",
   "items": [
-    {"name": "Coca Cola", "name_en": "Coca Cola", "name_cn": "可口可乐", "brand_name": "Coca-Cola", "quantity": 2, "unit_price": 3.5, "total_price": 7.0, "category_name": "超市购物", "sub_category": "饮料", "discount_amount": 0, "discount_reason": ""}
+    {"name": "Coca Cola", "name_en": "Coca Cola", "name_cn": "可口可乐", "brand_name": "Coca-Cola", "quantity": 2, "unit": "罐", "unit_price": 3.5, "total_price": 7.0, "category_name": "超市购物", "sub_category": "饮料", "discount_amount": 0, "discount_reason": ""}
   ],
   "subtotal": 100.0,
   "discount_amount": 5.0,
