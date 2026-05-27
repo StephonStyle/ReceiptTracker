@@ -545,6 +545,12 @@ body {
 .item-editor-row .ie-unit { }
 .item-editor-row .ie-price { }
 .item-editor-row .ie-cat { }
+.item-editor-row .ie-discount-row {
+  grid-column: 3 / -1;
+  font-size: 12px;
+  color: #EF9A9A;
+  padding: 2px 0;
+}
 .item-editor-row .remove-item {
   background: none;
   border: none;

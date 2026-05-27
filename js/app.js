@@ -1049,7 +1049,7 @@ function getOcrPrompt() {
 1. 金额字段统一为数字类型，不要带货币符号
 2. 如果某些字段不存在，使用空字符串或0
 3. name_en 首字母大写（Title Case），例如 "Coca Cola" 而不是 "coca cola"
-4. brand_name 如有则单独提取，不要混在 name 字段里
+4. brand_name 如有则单独提取，不要混在 name、name_cn、name_en 任何字段里（很重要！name_cn 只写中文商品名，name_en 只写英文商品名，都不包含品牌名）
 5. 所有字段都必须出现在JSON中
 6. 只返回JSON，不要有额外的说明文字
 7. **非常重要**：如果不确定某个字段，设为空/0，并在下面列出。
@@ -1172,7 +1172,7 @@ function fillOcrResult(receipt) {
 
   const container = document.getElementById('ocrItems');
   container.innerHTML = '';
-  const items = (receipt.items && receipt.items.length) ? receipt.items : [{ name: '', name_cn: '', quantity: 1, unit_price: 0, total_price: 0, category_name: '其他' }];
+  const items = (receipt.items && receipt.items.length) ? receipt.items.filter(function(it) { return it.name || it.name_en || it.name_cn; }).filter(function(it) { var n = (it.name_en || it.name || it.name_cn || '').trim(); return n.length > 0 && isNaN(Number(n)); }) : [{ name: '', name_cn: '', quantity: 1, unit_price: 0, total_price: 0, category_name: '其他' }];
   mergeItems(items).forEach((item, i) => {
     addItemRow(item);
   });
@@ -1221,7 +1221,7 @@ function addItemRow(item, opts) {
   var nameEn = item ? (item.name_en || item.name || '') : '';
   var nameCn = (item && item.name_cn) ? item.name_cn : translateItem(nameEn || (item ? item.name : ''));
   var brand = (item && item.brand_name) || '';
-  var qty = item ? item.quantity || 1 : 1;
+  var qty = item ? item.quantity || 1 : 1;
   if (brand && nameEn && nameEn.toLowerCase().startsWith(brand.toLowerCase())) {
     nameEn = nameEn.substring(brand.length).trim();
   }
@@ -1268,8 +1268,7 @@ function addItemRow(item, opts) {
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>'
   ,
-    (itemDiscAmt ? '<span style="font-size:11px;color:#EF9A9A;margin-left:6px;">折扣 −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</span>' : ''),
-    (itemDiscAmt ? '<span style="font-size:11px;color:#EF9A9A;margin-left:6px;">折扣 −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</span>' : '')].join('');
+    (itemDiscAmt ? '<div class="ie-discount-row"><input type="hidden" class="ie-disc-amt" value="' + itemDiscAmt.toFixed(2) + '"><input type="hidden" class="ie-disc-reason" value="' + esc(itemDiscReason) + '">' + (itemDiscReason ? esc(itemDiscReason) : '优惠') + ' −' + dsSym + itemDiscAmt.toFixed(2) + '</div>' : '')].join('');
   container.appendChild(div);
 }
 
@@ -1316,7 +1315,9 @@ async function saveOcrReceipt() {
         unit_price: parseFloat(row.querySelector('.ie-price')?.value) || 0,
         total_price: parseFloat(row.querySelector('.ie-price')?.value) || 0,
         category_name: row.querySelector('.ie-cat')?.value || '其他',
-        unit: row.querySelector('.ie-unit')?.value || '个'
+        unit: row.querySelector('.ie-unit')?.value || '个',
+        discount_amount: parseFloat(row.querySelector('.ie-disc-amt')?.value) || 0,
+        discount_reason: (row.querySelector('.ie-disc-reason')?.value || '').trim()
       });
     });
 
@@ -1362,7 +1363,7 @@ async function saveOcrReceipt() {
     const receipts = await sbPost('receipts', receiptData);
     const receiptId = receipts[0].id;
 
-    const itemRows = items.map((item, idx) => ({
+    let itemRows = items.map((item, idx) => ({
       receipt_id: receiptId,
       name: item.name,
       name_cn: item.name_cn || '',
@@ -1491,7 +1492,9 @@ async function saveManualReceipt() {
       quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
       total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
       category_name: row.querySelector('.ie-cat').value || '其他',
-      unit: row.querySelector('.ie-unit').value || '个'
+      unit: row.querySelector('.ie-unit').value || '个',
+        discount_amount: parseFloat(row.querySelector('.ie-disc-amt')?.value) || 0,
+        discount_reason: (row.querySelector('.ie-disc-reason')?.value || '').trim()
     });
   });
 
@@ -1518,7 +1521,7 @@ async function saveManualReceipt() {
     const receipts = await sbPost('receipts', receiptData);
     const receiptId = receipts[0].id;
 
-    const itemRows = items.map((item, idx) => ({
+    let itemRows = items.map((item, idx) => ({
       receipt_id: receiptId, name: item.name,
       name_cn: item.name_cn || '', name_en: item.name_en || '', brand_name: item.brand_name || '',
       quantity: item.quantity,
@@ -1666,7 +1669,7 @@ async function showReceiptDetail(id) {
                   <span class="item-qty">×${i.quantity}${i.unit ? i.unit : ''}</span>
                   <span class="item-price">${curSym}${Number(i.total_price).toFixed(2)}</span>
                 </div>
-                ${itemDiscount ? '<span style="margin-left:8px;font-size:11px;color:#EF9A9A;">折扣 −' + curSym + itemDiscount.toFixed(2) + (itemDiscountReason ? ' (' + esc(itemDiscountReason) + ')' : '') + '</span>' : ''}
+                ${itemDiscount ? '<div class="item-discount">' + (itemDiscountReason ? esc(itemDiscountReason) : '优惠') + ' −' + curSym + itemDiscount.toFixed(2) + '</div>' : ''}
               </li>`;
             }).join('')}
           </ul>
@@ -1864,7 +1867,7 @@ function addEditItemRow(item) {
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();calcEditTotal()" title="删除此行">✕</button>'
   ,
-    (itemDiscAmt ? '<span style="font-size:11px;color:#EF9A9A;margin-left:6px;">折扣 −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</span>' : '')].join('');
+    (itemDiscAmt ? '<div class="ie-discount-row"><input type="hidden" class="ie-disc-amt" value="' + itemDiscAmt.toFixed(2) + '"><input type="hidden" class="ie-disc-reason" value="' + esc(itemDiscReason) + '">' + (itemDiscReason ? esc(itemDiscReason) : '优惠') + ' −' + dsSym + itemDiscAmt.toFixed(2) + '</div>' : '')].join('');
   container.appendChild(div);
 }
 
@@ -1921,7 +1924,7 @@ async function saveEditReceipt(id) {
 
     // Replace items
     await sbDelete('receipt_items', '?receipt_id=eq.' + id);
-    const itemRows = items.map((item, idx) => ({
+    let itemRows = items.map((item, idx) => ({
       receipt_id: id, name: item.name,
       name_cn: item.name_cn || '', name_en: item.name_en || '', brand_name: item.brand_name || '',
       quantity: item.quantity,
