@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS receipt_items (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   receipt_id BIGINT REFERENCES receipts(id) ON DELETE CASCADE,
   name TEXT NOT NULL DEFAULT '',
+  name_cn TEXT DEFAULT '',
+  name_en TEXT DEFAULT '',
+  brand_name TEXT DEFAULT '',
   quantity REAL DEFAULT 1,
   unit_price REAL DEFAULT 0,
   total_price REAL DEFAULT 0,
@@ -59,3 +62,11 @@ CREATE POLICY "Public Access" ON receipts
 
 CREATE POLICY "Public Access" ON receipt_items
   FOR ALL USING (true) WITH CHECK (true);
+
+-- ========================================
+-- 迁移：为已存在的数据库添加新字段
+-- 如果表已存在且缺少字段，运行以下 SQL
+-- ========================================
+ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS name_cn TEXT DEFAULT '';
+ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
+ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS brand_name TEXT DEFAULT '';

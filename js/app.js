@@ -184,17 +184,28 @@ function navigateTo(page) {
 }
 
 function goBack() {
-  if (editingReceiptId) {
-    const id = editingReceiptId;
-    editingReceiptId = null;
-    showReceiptDetail(id);
-    return;
-  }
-  if (currentPage.startsWith('page-') && currentPage !== 'page-dashboard') {
+  console.log('goBack called, currentPage=' + currentPage + ' editingReceiptId=' + editingReceiptId);
+  try {
+    // Simple: check which page is currently active and go to the correct parent
+    if (editingReceiptId && currentPage === 'edit') {
+      // Edit page → go back to detail
+      const id = editingReceiptId;
+      editingReceiptId = null;
+      showReceiptDetail(id);
+      return;
+    }
+    if (currentPage === 'detail') {
+      // Detail page → go back to list
+      editingReceiptId = null;
+      switchTab('list');
+      return;
+    }
+    // Add / manual / other sub-pages → go back to dashboard
     switchTab('dashboard');
-    return;
+  } catch (e) {
+    console.error('goBack error:', e);
+    showToast('返回失败: ' + e.message, 'error');
   }
-  switchTab(currentTab);
 }
 
 function getTitle(tab) {
@@ -324,9 +335,10 @@ function renderAnaCategoryChart(categories) {
     return;
   }
   const colors = ['#4F46E5', '#F59E0B', '#EF4444', '#10B981', '#8B5CF6', '#EC4899', '#3B82F6', '#14B8A6', '#6366F1', '#F97316', '#22C55E', '#9CA3AF'];
+  var s = getAnaSymbol();
   charts.anaCategory = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels: categories.map(c => c.name + '  ¥' + c.total), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
+    data: { labels: categories.map(c => c.name + '  ' + s + c.total), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } } } }
   });
 }
@@ -338,10 +350,11 @@ function renderAnaDailyChart(daily) {
     charts.anaDaily = new Chart(ctx, { type: 'line', data: { labels: ['暂无'], datasets: [{ data: [0] }] }, options: { responsive: true, maintainAspectRatio: false } });
     return;
   }
+  var s = getAnaSymbol();
   charts.anaDaily = new Chart(ctx, {
     type: 'line',
     data: { labels: daily.map(d => d.date), datasets: [{ label: '每日支出', data: daily.map(d => d.total), borderColor: '#4F46E5', backgroundColor: 'rgba(79,70,229,0.1)', fill: true, tension: 0.3, pointRadius: 3 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => '¥' + v } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => s + v } }, x: { grid: { display: false }, ticks: { maxRotation: 45, font: { size: 10 } } } } }
   });
 }
 
@@ -504,6 +517,37 @@ async function testApiConnection() {
   }
 }
 
+// ======================== OCR PROGRESS HELPER ========================
+function updateOcrProgress(step, detail) {
+  const steps = [
+    { key: 'compress', label: '正在压缩图片...' },
+    { key: 'api', label: '正在调用 AI 识别...' },
+    { key: 'parse', label: '正在解析识别结果...' },
+    { key: 'done', label: '识别完成 ✓' },
+  ];
+  const el = document.getElementById('ocrLoadingText');
+  if (!el) return;
+  const found = steps.find(s => s.key === step);
+  if (found) {
+    el.textContent = detail || found.label;
+  } else {
+    el.textContent = detail || step;
+  }
+  // Update progress bar (single mode only — batch mode manages its own bar)
+  if (!_batchOcrMode) {
+    var idx = steps.findIndex(s => s.key === step);
+    if (idx >= 0) {
+      var pct = Math.round(((idx + 1) / steps.length) * 100);
+      var bar = document.getElementById('ocrProgressBar');
+      var fill = document.getElementById('ocrProgressFill');
+      var label = document.getElementById('ocrProgressLabel');
+      if (bar) bar.style.display = 'block';
+      if (fill) fill.style.width = pct + '%';
+      if (label) label.textContent = '步骤 ' + (idx + 1) + '/' + steps.length;
+    }
+  }
+}
+
 // ======================== OCR UPLOAD ========================
 function handleFileSelect(event) {
   var newFiles = Array.from(event.target.files);
@@ -568,6 +612,12 @@ async function startOcr(fileIndex) {
   }
   if (!file) return;
 
+  // Clear previous state
+  _batchOcrMode = false;
+  document.getElementById('ocrResult').style.display = 'none';
+  document.getElementById('ocrResult').innerHTML = '';
+  document.getElementById('ocrItems').innerHTML = '';
+
   syncProviderFromDropdown();
   var apiKey = getApiKey();
   var provider = getProvider();
@@ -582,7 +632,7 @@ async function startOcr(fileIndex) {
   }
 
   document.getElementById('ocrLoading').style.display = 'block';
-  document.getElementById('ocrResult').style.display = 'none';
+  updateOcrProgress('compress');
 
   try {
     await processSingleOcr();
@@ -606,27 +656,68 @@ async function startAllOcr() {
     showToast('请先在设置中配置 API Key', 'error');
     return;
   }
-  showToast('开始识别 ' + currentOcrFiles.length + ' 张图片...');
+
+  // Show progress bar
+  document.getElementById('ocrLoading').style.display = 'block';
+  document.getElementById('ocrResult').style.display = 'none';
+  document.getElementById('uploadArea').style.display = 'none';
+  document.getElementById('ocrLoadingText').textContent = 'AI 正在识别小票内容...';
+  document.getElementById('ocrProgressBar').style.display = 'block';
+  document.getElementById('ocrProgressLabel').style.display = 'block';
+
+  _batchOcrMode = true;
   var successCount = 0;
+  var combinedReceipt = null;
   for (var i = 0; i < currentOcrFiles.length; i++) {
-    showToast('正在识别第 ' + (i + 1) + '/' + currentOcrFiles.length + ' 张...');
+    var pct = Math.round((i / currentOcrFiles.length) * 100);
+    document.getElementById('ocrProgressFill').style.width = pct + '%';
+    document.getElementById('ocrProgressLabel').textContent = '正在识别第 ' + (i + 1) + '/' + currentOcrFiles.length + ' 张...';
+
     currentOcrImageFile = currentOcrFiles[i];
     try {
-      await processSingleOcr();
+      var receipt = await processSingleOcr();
+      if (!combinedReceipt) {
+        combinedReceipt = receipt;
+      } else {
+        // Merge items from multiple photos
+        combinedReceipt.items = (combinedReceipt.items || []).concat(receipt.items || []);
+        // Merge uncertain fields
+        combinedReceipt.uncertain_fields = (combinedReceipt.uncertain_fields || []).concat(receipt.uncertain_fields || []);
+        combinedReceipt.uncertain_questions = Object.assign(combinedReceipt.uncertain_questions || {}, receipt.uncertain_questions || {});
+      }
       successCount++;
     } catch (e) {
       showToast('第 ' + (i + 1) + ' 张识别失败: ' + e.message, 'error');
     }
   }
-  if (successCount > 0) {
+  _batchOcrMode = false;
+
+  // Show combined result once
+  document.getElementById('ocrProgressFill').style.width = '100%';
+  document.getElementById('ocrProgressLabel').textContent = '已完成 ' + successCount + '/' + currentOcrFiles.length + ' 张';
+
+  if (!combinedReceipt) {
+    document.getElementById('ocrLoading').style.display = 'none';
+    document.getElementById('ocrProgressBar').style.display = 'none';
+    document.getElementById('ocrProgressLabel').style.display = 'none';
+    document.getElementById('uploadArea').style.display = 'block';
+    showToast('全部识别失败，请重试', 'error');
+  } else {
+    document.getElementById('ocrLoading').style.display = 'none';
+    document.getElementById('uploadArea').style.display = 'none';
+    fillOcrResult(combinedReceipt);
+    document.getElementById('ocrResult').style.display = 'block';
     showToast('✓ ' + successCount + '/' + currentOcrFiles.length + ' 张识别完成', 'success');
   }
 }
+
+var _batchOcrMode = false; // true when running in batch mode
 
 async function processSingleOcr() {
   var file = currentOcrImageFile;
   if (!file) throw new Error('无文件');
 
+  updateOcrProgress('compress');
   var compressedFile = await compressImage(file, 1600);
   var base64 = await fileToBase64(compressedFile);
   var ext = compressedFile.name.split('.').pop().toLowerCase();
@@ -637,6 +728,8 @@ async function processSingleOcr() {
   var provider = getProvider();
   var apiKey = getApiKey();
   var text;
+
+  updateOcrProgress('api');
   if (provider === 'deepseek') {
     text = await callDeepSeekOcr(apiKey, dataUrl, mediaType);
   } else if (provider === 'gemini') {
@@ -649,15 +742,39 @@ async function processSingleOcr() {
     text = await callClaudeOcr(apiKey, dataUrl, mediaType);
   }
 
+  updateOcrProgress('parse');
   var jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('无法解析识别结果');
   var receipt = JSON.parse(jsonMatch[0]);
 
+  // Validate items
+  if (receipt.items && receipt.items.length) {
+    var validItems = receipt.items.filter(function(it) {
+      var name = (it.name || '').trim();
+      var cn = (it.name_cn || '').trim();
+      var hasPrice = parseFloat(it.total_price || it.unit_price || 0) > 0;
+      return (name || cn) && hasPrice;
+    });
+    if (validItems.length === 0 && receipt.items.length > 0) {
+      // All items look invalid - maybe it's a second attempt issue
+      diag('OCR警告: ' + receipt.items.length + ' 个商品均无有效名称或价格');
+    }
+    if (validItems.length > 0) {
+      receipt.items = validItems;
+    }
+  }
+
+  // In batch mode: return receipt data without modifying UI
+  if (_batchOcrMode) {
+    return receipt;
+  }
+
   document.getElementById('ocrLoading').style.display = 'none';
   document.getElementById('uploadArea').style.display = 'none';
+  updateOcrProgress('done');
   fillOcrResult(receipt);
   document.getElementById('ocrResult').style.display = 'block';
-  diag('OCR成功');
+  diag('OCR成功: ' + (receipt.items ? receipt.items.length : 0) + ' 个商品');
 }
 
 async function callClaudeOcr(apiKey, dataUrl, mediaType) {
@@ -925,7 +1042,9 @@ function getOcrPrompt() {
 - receipt_time: 时间（格式 HH:MM）
 - items: 商品列表，每项包含：
   - name: 商品原文名称（保持收据上的原文，通常是英文）
-  - name_cn: 根据商品原文翻译成中文，如果是英文则翻译为中文，如果是中文则保留
+  - name_en: 商品英文名（原文如果是英文则保留，如果是其他语言则留空）
+  - name_cn: 商品中文名（根据商品原文翻译成中文）
+  - brand_name: 品牌名称（如果有品牌信息则提取，没有则留空）
   - quantity: 数量（数字，默认为1）
   - unit_price: 单价（数字，如果没有单价则和total_price相同）
   - total_price: 该商品总价
@@ -940,10 +1059,11 @@ function getOcrPrompt() {
 关键要求：
 1. 金额字段统一为数字类型，不要带货币符号
 2. 如果某些字段不存在，使用空字符串或0
-3. 商品名称保持原文
-4. 所有字段都必须出现在JSON中
-5. 只返回JSON，不要有额外的说明文字
-6. **非常重要**：如果不确定某个字段，设为空/0，并在下面列出。
+3. name_en 首字母大写（Title Case），例如 "Coca Cola" 而不是 "coca cola"
+4. brand_name 如有则单独提取，不要混在 name 字段里
+5. 所有字段都必须出现在JSON中
+6. 只返回JSON，不要有额外的说明文字
+7. **非常重要**：如果不确定某个字段，设为空/0，并在下面列出。
 
 除了上面的数据字段外，请在JSON根部额外包含：
 - "uncertain_fields": 一个数组，列出你不确定的字段路径，例如 ["store_name", "items[1].name", "total_amount"]
@@ -957,15 +1077,15 @@ function getOcrPrompt() {
 
 返回格式示例：
 {
-  "store_name": "沃尔玛",
+  "store_name": "Walmart",
   "store_address": "",
   "receipt_date": "2024-01-15",
   "receipt_time": "14:30",
   "items": [
-    {"name": "可口可乐", "name_cn": "可口可乐", "quantity": 2, "unit_price": 3.5, "total_price": 7.0, "category_name": "餐饮美食"}
+    {"name": "Coca Cola", "name_en": "Coca Cola", "name_cn": "可口可乐", "brand_name": "Coca-Cola", "quantity": 2, "unit_price": 3.5, "total_price": 7.0, "category_name": "餐饮美食"}
   ],
   "subtotal": 100.0,
-  "discount_amount": -5.0,
+  "discount_amount": 5.0,
   "tax_amount": 0,
   "total_amount": 95.0,
   "payment_method": "微信支付",
@@ -1093,8 +1213,9 @@ function setFieldWithUncertainty(id, value, uncertain, question) {
 
 function addItemRow(item, opts) {
   var container = document.getElementById('ocrItems');
-  var nameEn = item ? item.name || '' : '';
-  var nameCn = (item && item.name_cn) ? item.name_cn : translateItem(nameEn);
+  var nameEn = item ? (item.name_en || item.name || '') : '';
+  var nameCn = (item && item.name_cn) ? item.name_cn : translateItem(nameEn || (item ? item.name : ''));
+  var brand = (item && item.brand_name) || '';
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
@@ -1117,8 +1238,9 @@ function addItemRow(item, opts) {
   div.className = 'item-editor-row';
   div.innerHTML = [
     '<div class="ie-name-row">',
-    '<input type="text" placeholder="中文名称" value="' + esc(nameCn) + '" onchange="recalcTotal()" class="ie-name-cn">',
-    '<input type="text" placeholder="English name" value="' + esc(nameEn) + '" onchange="recalcTotal()" class="ie-name-en">',
+    '<input type="text" placeholder="品牌" value="' + esc(brand) + '" onchange="recalcTotal()" class="ie-brand" style="max-width:70px;">',
+    '<input type="text" placeholder="中文名" value="' + esc(nameCn) + '" onchange="recalcTotal()" class="ie-name-cn">',
+    '<input type="text" placeholder="English" value="' + esc(nameEn) + '" onchange="recalcTotal()" class="ie-name-en">',
     '</div>',
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="recalcTotal()" class="ie-qty">',
     unitHtml,
@@ -1136,15 +1258,16 @@ function recalcTotal() {
   // Auto-update subtotal to match item total
   document.getElementById('ocrSubtotal').value = total ? total.toFixed(2) : '';
   const subtotal = total;
-  const discount = parseFloat(document.getElementById('ocrDiscount').value) || 0;
-  var tax = parseFloat(document.getElementById('ocrTax').value) || 0;
+  const discount = Math.abs(parseFloat(document.getElementById('ocrDiscount').value) || 0);
+  var tax = Math.abs(parseFloat(document.getElementById('ocrTax').value) || 0);
   var taxIncluded = document.getElementById('ocrTaxIncluded').checked;
   if (taxIncluded) tax = 0;
   var symbol = getCurrencySymbol();
   document.getElementById('ocrCurrencySymbol').textContent = symbol;
   var taxLabel = document.getElementById('ocrTax').parentElement.querySelector('label');
   if (taxLabel) taxLabel.textContent = taxIncluded ? '税费(含)' : '税费';
-  document.getElementById('ocrTotalDisplay').textContent = Math.max(0, subtotal + discount + tax).toFixed(2);
+  // 小计 - 折扣 - 税费 = 支付
+  document.getElementById('ocrTotalDisplay').textContent = Math.max(0, subtotal - discount - tax).toFixed(2);
   document.getElementById('ocrTotalMismatch').style.display = 'none';
 }
 
@@ -1157,12 +1280,16 @@ async function saveOcrReceipt() {
     const rows = document.querySelectorAll('#ocrItems .item-editor-row');
     const items = [];
     rows.forEach(row => {
+      const brand = (row.querySelector('.ie-brand')?.value || '').trim();
       const nameCn = (row.querySelector('.ie-name-cn')?.value || '').trim();
       const nameEn = (row.querySelector('.ie-name-en')?.value || '').trim();
       if (!nameCn && !nameEn) return;
-      const name = nameEn ? (nameCn ? nameCn + ' (' + nameEn + ')' : nameEn) : nameCn;
+      const displayName = nameCn || nameEn;
       items.push({
-        name: name,
+        name: displayName,
+        name_en: nameEn,
+        name_cn: nameCn,
+        brand_name: brand,
         quantity: parseFloat(row.querySelector('.ie-qty')?.value) || 1,
         unit_price: parseFloat(row.querySelector('.ie-price')?.value) || 0,
         total_price: parseFloat(row.querySelector('.ie-price')?.value) || 0,
@@ -1178,8 +1305,8 @@ async function saveOcrReceipt() {
       return;
     }
 
-    const discount = parseFloat(document.getElementById('ocrDiscount')?.value) || 0;
-    var tax = parseFloat(document.getElementById('ocrTax')?.value) || 0;
+    const discount = Math.abs(parseFloat(document.getElementById('ocrDiscount')?.value) || 0);
+    var tax = Math.abs(parseFloat(document.getElementById('ocrTax')?.value) || 0);
     var taxIncluded = document.getElementById('ocrTaxIncluded')?.checked || false;
     if (taxIncluded) tax = 0;
     const subtotal = parseFloat(document.getElementById('ocrSubtotal')?.value) || 0;
@@ -1201,7 +1328,7 @@ async function saveOcrReceipt() {
       store_name: (document.getElementById('ocrStore')?.value || '').trim(),
       receipt_date: document.getElementById('ocrDate')?.value || '',
       receipt_time: document.getElementById('ocrTime')?.value || '',
-      total_amount: Math.max(0, (subtotal || itemTotal) + discount + tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - discount - tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1216,6 +1343,9 @@ async function saveOcrReceipt() {
     const itemRows = items.map((item, idx) => ({
       receipt_id: receiptId,
       name: item.name,
+      name_cn: item.name_cn || '',
+      name_en: item.name_en || '',
+      brand_name: item.brand_name || '',
       quantity: item.quantity,
       unit_price: item.unit_price,
       total_price: item.total_price,
@@ -1250,10 +1380,9 @@ function retakePhoto() {
 // ======================== MANUAL ENTRY ========================
 function addManualItemRow(item) {
   const container = document.getElementById('manualItems');
-  var nameEn = item ? item.name || '' : '';
-  var nameCn = '';
-  if (item && item.name_cn) nameCn = item.name_cn;
-  else if (item) nameCn = translateItem(item.name);
+  var nameEn = item ? (item.name_en || item.name || '') : '';
+  var nameCn = (item && item.name_cn) ? item.name_cn : translateItem(nameEn || (item ? item.name : ''));
+  var brand = (item && item.brand_name) || '';
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
@@ -1273,8 +1402,9 @@ function addManualItemRow(item) {
   catHtml += '</select>';
   div.innerHTML = [
     '<div class="ie-name-row">',
-    '<input type="text" placeholder="中文名称" value="' + esc(nameCn) + '" onchange="calcManualTotal()" class="ie-name-cn">',
-    '<input type="text" placeholder="English name" value="' + esc(nameEn) + '" onchange="calcManualTotal()" class="ie-name-en">',
+    '<input type="text" placeholder="品牌" onchange="calcManualTotal()" class="ie-brand" style="max-width:70px;" value="' + esc(brand) + '">',
+    '<input type="text" placeholder="中文名" value="' + esc(nameCn) + '" onchange="calcManualTotal()" class="ie-name-cn">',
+    '<input type="text" placeholder="English" value="' + esc(nameEn) + '" onchange="calcManualTotal()" class="ie-name-en">',
     '</div>',
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="calcManualTotal()" class="ie-qty">',
     unitHtml,
@@ -1292,12 +1422,12 @@ function calcManualTotal() {
   // Auto-update subtotal to match item total
   document.getElementById('manualSubtotal').value = total ? total.toFixed(2) : '';
   const subtotal = total;
-  const discount = parseFloat(document.getElementById('manualDiscount').value) || 0;
-  const tax = parseFloat(document.getElementById('manualTax').value) || 0;
+  const discount = Math.abs(parseFloat(document.getElementById('manualDiscount').value) || 0);
+  const tax = Math.abs(parseFloat(document.getElementById('manualTax').value) || 0);
   var c = document.getElementById('manualCurrency');
   var symbol = c ? (currencyMap[c.value] || '€') : '€';
   document.getElementById('manualCurrencySymbol').textContent = symbol;
-  document.getElementById('manualTotalDisplay').textContent = Math.max(0, subtotal + discount + tax).toFixed(2);
+  document.getElementById('manualTotalDisplay').textContent = Math.max(0, subtotal - discount - tax).toFixed(2);
   document.getElementById('manualTotalMismatch').style.display = 'none';
 }
 
@@ -1305,12 +1435,16 @@ async function saveManualReceipt() {
   const rows = document.querySelectorAll('#manualItems .item-editor-row');
   const items = [];
   rows.forEach(row => {
+    const brand = (row.querySelector('.ie-brand')?.value || '').trim();
     const nameCn = (row.querySelector('.ie-name-cn')?.value || '').trim();
     const nameEn = (row.querySelector('.ie-name-en')?.value || '').trim();
     if (!nameCn && !nameEn) return;
-    const name = nameEn ? (nameCn ? nameCn + ' (' + nameEn + ')' : nameEn) : nameCn;
+    const displayName = nameCn || nameEn;
     items.push({
-      name,
+      name: displayName,
+      name_en: nameEn,
+      name_cn: nameCn,
+      brand_name: brand,
       quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
       total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
       category_name: row.querySelector('.ie-cat').value || '其他',
@@ -1320,8 +1454,8 @@ async function saveManualReceipt() {
 
   if (!items.length) { showToast('请至少添加一个商品', 'error'); return; }
 
-  const discount = parseFloat(document.getElementById('manualDiscount').value) || 0;
-  const tax = parseFloat(document.getElementById('manualTax').value) || 0;
+  const discount = Math.abs(parseFloat(document.getElementById('manualDiscount').value) || 0);
+  const tax = Math.abs(parseFloat(document.getElementById('manualTax').value) || 0);
   const subtotal = parseFloat(document.getElementById('manualSubtotal').value) || 0;
   const itemTotal = items.reduce((s, i) => s + i.total_price, 0);
 
@@ -1330,7 +1464,7 @@ async function saveManualReceipt() {
       store_name: document.getElementById('manualStore').value.trim(),
       receipt_date: document.getElementById('manualDate').value,
       receipt_time: document.getElementById('manualTime').value,
-      total_amount: Math.max(0, (subtotal || itemTotal) + discount + tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - discount - tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1342,7 +1476,9 @@ async function saveManualReceipt() {
     const receiptId = receipts[0].id;
 
     const itemRows = items.map((item, idx) => ({
-      receipt_id: receiptId, name: item.name, quantity: item.quantity,
+      receipt_id: receiptId, name: item.name,
+      name_cn: item.name_cn || '', name_en: item.name_en || '', brand_name: item.brand_name || '',
+      quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
       category_name: item.category_name, sort_order: idx
     }));
@@ -1449,22 +1585,67 @@ async function showReceiptDetail(id) {
         <div class="detail-section">
           <h3>🛒 商品明细</h3>
           <ul class="item-list">
-            ${(r.receipt_items || []).map(i => `
-              <li><span class="item-name">${esc(i.name)}</span><span class="item-qty">×${i.quantity}${i.unit ? i.unit : ''}</span><span class="item-price">${curSym}${Number(i.total_price).toFixed(2)}</span></li>
-            `).join('')}
+            ${(r.receipt_items || []).map(i => {
+              // New format: use separate fields
+              var brand = i.brand_name || '';
+              var nameCn = i.name_cn || '';
+              var nameEn = i.name_en || '';
+              // Fallback: parse from old combined format
+              if (!nameCn && !nameEn && i.name) {
+                var parsed = parseStoredName(i.name);
+                nameCn = parsed.cn; nameEn = parsed.en;
+              }
+              var displayParts = [];
+              if (brand) displayParts.push(esc(brand));
+              if (nameCn) displayParts.push(esc(nameCn));
+              if (nameEn && nameEn !== nameCn) displayParts.push('<span style="color:var(--gray-400);font-size:12px;">' + esc(nameEn) + '</span>');
+              var displayHtml = displayParts.join(' ') || esc(i.name);
+              var itemDiscount = parseFloat(i.discount_amount || 0);
+              return `
+              <li class="item-li">
+                <div class="item-main">
+                  <span class="item-name">${displayHtml}</span>
+                  <span class="item-qty">×${i.quantity}${i.unit ? i.unit : ''}</span>
+                  <span class="item-price">${curSym}${Number(i.total_price).toFixed(2)}${itemDiscount ? ' <span class="item-discount" style="color:#EF9A9A;font-size:11px;">−' + curSym + itemDiscount.toFixed(2) + '</span>' : ''}</span>
+                </div>
+              </li>`;
+            }).join('')}
           </ul>
         </div>
       </div>
       <div class="card">
         <div class="detail-section">
-          <h3>📄 详细信息</h3>
-          <div class="detail-grid">
-            <div class="dg-item"><div class="dg-label">小计</div><div class="dg-value">${curSym}${Number(r.subtotal || 0).toFixed(2)}</div></div>
-            <div class="dg-item"><div class="dg-label">折扣</div><div class="dg-value">${r.discount_amount ? curSym + Number(r.discount_amount).toFixed(2) : '-'}</div></div>
-            <div class="dg-item"><div class="dg-label">税费</div><div class="dg-value">${r.tax_amount ? curSym + Number(r.tax_amount).toFixed(2) : '-'}</div></div>
-            <div class="dg-item"><div class="dg-label">支付方式</div><div class="dg-value">${esc(r.payment_method) || '-'}</div></div>
+          <h3>💰 付款明细</h3>
+          <div class="payment-breakdown">
+            <div class="pb-row">
+              <span class="pb-label">小计（商品合计）</span>
+              <span class="pb-value">${curSym}${Number(r.subtotal || 0).toFixed(2)}</span>
+            </div>
+            ${r.discount_amount ? `
+            <div class="pb-row pb-discount">
+              <span class="pb-label">− 折扣优惠</span>
+              <span class="pb-value">− ${curSym}${Number(r.discount_amount).toFixed(2)}</span>
+            </div>` : ''}
+            ${r.tax_amount ? `
+            <div class="pb-row pb-tax">
+              <span class="pb-label">+ 税费</span>
+              <span class="pb-value">+ ${curSym}${Number(r.tax_amount).toFixed(2)}</span>
+            </div>` : ''}
+            <div class="pb-row pb-divider"></div>
+            <div class="pb-row pb-total">
+              <span class="pb-label">= 实付金额</span>
+              <span class="pb-value">${curSym}${Number(r.total_amount).toFixed(2)}</span>
+            </div>
           </div>
-          ${r.notes ? `<div style="margin-top:8px;"><div class="dg-label">备注</div><div class="dg-value">${esc(r.notes)}</div></div>` : ''}
+        </div>
+      </div>
+      <div class="card">
+        <div class="detail-section">
+          <h3>📄 其他信息</h3>
+          <div class="detail-grid">
+            <div class="dg-item"><div class="dg-label">支付方式</div><div class="dg-value">${esc(r.payment_method) || '-'}</div></div>
+            ${r.notes ? `<div class="dg-item"><div class="dg-label">备注</div><div class="dg-value">${esc(r.notes)}</div></div>` : ''}
+          </div>
         </div>
       </div>
       <div class="detail-actions">
@@ -1477,6 +1658,7 @@ async function showReceiptDetail(id) {
     document.getElementById('page-detail').classList.add('active');
     document.getElementById('pageTitle').textContent = '账单详情';
     document.getElementById('backBtn').classList.add('show');
+    currentPage = 'detail';
     editingReceiptId = r.id;
   } catch (e) {
     showToast('加载失败: ' + e.message, 'error');
@@ -1564,6 +1746,7 @@ async function editReceipt(id) {
     document.getElementById('page-edit').classList.add('active');
     document.getElementById('pageTitle').textContent = '编辑账单';
     document.getElementById('backBtn').classList.add('show');
+    currentPage = 'edit';
     editingReceiptId = r.id;
   } catch (e) {
     showToast('加载失败', 'error');
@@ -1572,9 +1755,15 @@ async function editReceipt(id) {
 
 function addEditItemRow(item) {
   const container = document.getElementById('editItems');
-  var parsed = parseStoredName(item ? item.name || '' : '');
-  var nameCn = parsed.cn;
-  var nameEn = parsed.en;
+  var nameEn = item ? (item.name_en || '') : '';
+  var nameCn = item ? (item.name_cn || '') : '';
+  var brand = item ? (item.brand_name || '') : '';
+  // Fallback: parse from old combined format
+  if (!nameEn && !nameCn && item && item.name) {
+    var parsed = parseStoredName(item.name);
+    nameCn = parsed.cn;
+    nameEn = parsed.en;
+  }
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
@@ -1594,8 +1783,9 @@ function addEditItemRow(item) {
   catHtml += '</select>';
   div.innerHTML = [
     '<div class="ie-name-row">',
-    '<input type="text" placeholder="中文名称" value="' + esc(nameCn) + '" onchange="calcEditTotal()" class="ie-name-cn">',
-    '<input type="text" placeholder="English name" value="' + esc(nameEn) + '" onchange="calcEditTotal()" class="ie-name-en">',
+    '<input type="text" placeholder="品牌" onchange="calcEditTotal()" class="ie-brand" style="max-width:70px;" value="' + esc(brand) + '">',
+    '<input type="text" placeholder="中文名" value="' + esc(nameCn) + '" onchange="calcEditTotal()" class="ie-name-cn">',
+    '<input type="text" placeholder="English" value="' + esc(nameEn) + '" onchange="calcEditTotal()" class="ie-name-en">',
     '</div>',
     '<input type="number" placeholder="数量" value="' + qty + '" min="1" step="1" onchange="calcEditTotal()" class="ie-qty">',
     unitHtml,
@@ -1613,12 +1803,12 @@ function calcEditTotal() {
   // Auto-update subtotal to match item total
   document.getElementById('editSubtotal').value = total ? total.toFixed(2) : '';
   const subtotal = total;
-  const discount = parseFloat(document.getElementById('editDiscount').value) || 0;
-  const tax = parseFloat(document.getElementById('editTax').value) || 0;
+  const discount = Math.abs(parseFloat(document.getElementById('editDiscount').value) || 0);
+  const tax = Math.abs(parseFloat(document.getElementById('editTax').value) || 0);
   var c = document.getElementById('editCurrency');
   var symbol = c ? (currencyMap[c.value] || '€') : '€';
   document.getElementById('editCurrencySymbol').textContent = symbol;
-  document.getElementById('editTotalDisplay').textContent = Math.max(0, subtotal + discount + tax).toFixed(2);
+  document.getElementById('editTotalDisplay').textContent = Math.max(0, subtotal - discount - tax).toFixed(2);
   document.getElementById('editTotalMismatch').style.display = 'none';
 }
 
@@ -1626,20 +1816,22 @@ async function saveEditReceipt(id) {
   const rows = document.querySelectorAll('#editItems .item-editor-row');
   const items = [];
   rows.forEach(row => {
+    const brand = (row.querySelector('.ie-brand')?.value || '').trim();
     const nameCn = (row.querySelector('.ie-name-cn')?.value || '').trim();
     const nameEn = (row.querySelector('.ie-name-en')?.value || '').trim();
     if (!nameCn && !nameEn) return;
-    const name = nameEn ? (nameCn ? nameCn + ' (' + nameEn + ')' : nameEn) : nameCn;
+    const displayName = nameCn || nameEn;
     items.push({
-      name, quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
+      name: displayName, name_en: nameEn, name_cn: nameCn, brand_name: brand,
+      quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
       total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
       category_name: row.querySelector('.ie-cat').value || '其他',
       unit: row.querySelector('.ie-unit').value || '个'
     });
   });
 
-  const discount = parseFloat(document.getElementById('editDiscount').value) || 0;
-  const tax = parseFloat(document.getElementById('editTax').value) || 0;
+  const discount = Math.abs(parseFloat(document.getElementById('editDiscount').value) || 0);
+  const tax = Math.abs(parseFloat(document.getElementById('editTax').value) || 0);
   const subtotal = parseFloat(document.getElementById('editSubtotal').value) || 0;
   const itemTotal = items.reduce((s, i) => s + i.total_price, 0);
 
@@ -1648,7 +1840,7 @@ async function saveEditReceipt(id) {
       store_name: document.getElementById('editStore').value.trim(),
       receipt_date: document.getElementById('editDate').value,
       receipt_time: document.getElementById('editTime').value,
-      total_amount: Math.max(0, (subtotal || itemTotal) + discount + tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - discount - tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1658,7 +1850,9 @@ async function saveEditReceipt(id) {
     // Replace items
     await sbDelete('receipt_items', '?receipt_id=eq.' + id);
     const itemRows = items.map((item, idx) => ({
-      receipt_id: id, name: item.name, quantity: item.quantity,
+      receipt_id: id, name: item.name,
+      name_cn: item.name_cn || '', name_en: item.name_en || '', brand_name: item.brand_name || '',
+      quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
       category_name: item.category_name, sort_order: idx
     }));
@@ -1669,6 +1863,31 @@ async function saveEditReceipt(id) {
   } catch (e) {
     showToast('保存失败: ' + e.message, 'error');
   }
+}
+
+// ======================== ANALYSIS CURRENCY ========================
+var exchangeRates = {
+  EUR: { EUR: 1, USD: 1.09, GBP: 0.86, CNY: 7.9 },
+  USD: { EUR: 0.92, USD: 1, GBP: 0.79, CNY: 7.25 },
+  GBP: { EUR: 1.16, USD: 1.27, GBP: 1, CNY: 9.2 },
+  CNY: { EUR: 0.13, USD: 0.14, GBP: 0.11, CNY: 1 },
+  other: { EUR: 1, USD: 1.09, GBP: 0.86, CNY: 7.9 }
+};
+
+function getAnaSymbol() {
+  var el = document.getElementById('anaCurrency');
+  if (!el) return '¥';
+  var c = { EUR: '€', USD: '$', GBP: '£', CNY: '¥' };
+  return c[el.value] || '¥';
+}
+
+function convertAnaAmount(amount, fromCurrency, toCurrency) {
+  if (!fromCurrency || fromCurrency === 'other') fromCurrency = 'EUR';
+  if (!toCurrency) toCurrency = 'CNY';
+  if (fromCurrency === toCurrency) return amount;
+  var rate = (exchangeRates[fromCurrency] || exchangeRates.EUR)[toCurrency];
+  if (!rate) return amount;
+  return amount * rate;
 }
 
 // ======================== ANALYSIS ========================
@@ -1685,11 +1904,12 @@ async function refreshAnalysis() {
       ));
     }
 
+    const anaSym = getAnaSymbol();
     const totalExpense = allData.reduce((s, r) => s + (r.total_amount || 0), 0);
     const receiptCount = allData.length;
-    document.getElementById('anaTotal').textContent = '¥' + totalExpense.toFixed(2);
+    document.getElementById('anaTotal').textContent = anaSym + totalExpense.toFixed(2);
     document.getElementById('anaCount').textContent = receiptCount;
-    document.getElementById('anaAvg').textContent = '¥' + (receiptCount ? (totalExpense / receiptCount).toFixed(2) : '0');
+    // 笔均已移除
 
     // Category breakdown
     const catMap = {};
@@ -1705,7 +1925,15 @@ async function refreshAnalysis() {
     allData.forEach(r => {
       if (r.receipt_date) dayMap[r.receipt_date] = (dayMap[r.receipt_date] || 0) + (r.total_amount || 0);
     });
-    const daily = Object.entries(dayMap).sort(([a], [b]) => a < b ? -1 : 1).map(([date, total]) => ({ date, total: Math.round(total * 100) / 100 }));
+    var daily = Object.entries(dayMap).sort(([a], [b]) => a < b ? -1 : 1).map(([date, total]) => ({ date, total: Math.round(total * 100) / 100 }));
+    // Apply trend time range filter
+    var trendRange = document.getElementById('anaTrendRange')?.value || '30';
+    if (trendRange !== 'all') {
+      var cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - parseInt(trendRange));
+      var cutoffStr = cutoff.toISOString().split('T')[0];
+      daily = daily.filter(function(d) { return d.date >= cutoffStr; });
+    }
     renderAnaDailyChart(daily);
 
     // Store ranking
@@ -1727,7 +1955,7 @@ async function refreshAnalysis() {
           <div style="flex:2;height:20px;background:var(--gray-100);border-radius:10px;overflow:hidden;">
             <div style="height:100%;width:${(s.total / maxTotal * 100).toFixed(1)}%;background:var(--primary);border-radius:10px;"></div>
           </div>
-          <span style="font-weight:600;font-size:14px;min-width:70px;text-align:right;">¥${Number(s.total).toFixed(2)}</span>
+          <span style="font-weight:600;font-size:14px;min-width:70px;text-align:right;">${anaSym}${Number(s.total).toFixed(2)}</span>
           <span style="font-size:12px;color:var(--gray-400);min-width:30px;text-align:right;">${s.count}笔</span>
         </div>
       `).join('');

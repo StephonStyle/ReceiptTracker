@@ -277,6 +277,37 @@ body {
 .item-list .item-name { flex: 1; font-size: 14px; }
 .item-list .item-qty { color: var(--gray-400); font-size: 13px; min-width: 30px; text-align: center; }
 .item-list .item-price { font-weight: 600; font-size: 14px; min-width: 60px; text-align: right; }
+.item-li { flex-direction: column !important; align-items: stretch !important; }
+.item-li .item-main { display: flex; align-items: center; gap: 8px; }
+.item-li .item-main .item-name { flex: 1; }
+.item-li .item-discount { font-size: 12px; color: #FCA5A5; margin-top: 2px; padding-left: 4px; }
+
+/* Payment breakdown */
+.payment-breakdown {
+  padding: 4px 0;
+}
+.pb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 14px;
+}
+.pb-row .pb-label { color: var(--gray-500); }
+.pb-row .pb-value { font-weight: 600; }
+.pb-discount .pb-label,
+.pb-discount .pb-value { color: #FCA5A5; }
+.pb-tax .pb-label,
+.pb-tax .pb-value { color: #60A5FA; }
+.pb-divider {
+  border-top: 1px dashed var(--gray-300);
+  padding: 0;
+  height: 0;
+  margin: 4px 0;
+}
+.pb-total { font-size: 16px; }
+.pb-total .pb-label { font-weight: 600; color: var(--gray-700); }
+.pb-total .pb-value { font-size: 18px; color: var(--danger); }
 
 /* ===== Receipt List ===== */
 .filter-bar {
@@ -506,6 +537,10 @@ body {
   flex: 1;
   min-width: 0;
 }
+.item-editor-row .ie-name-row input.ie-brand {
+  max-width: 80px;
+  flex: 0 0 auto;
+}
 .item-editor-row .ie-qty { }
 .item-editor-row .ie-unit { }
 .item-editor-row .ie-price { }
@@ -557,3 +592,7 @@ input[style*="border-color: #F59E0B"]::placeholder { color: #D97706; }
 
 /* Currency & payment row */
 .currency-payment-row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+
+/* Discount numbers in light red */
+#ocrDiscount, #manualDiscount, #editDiscount { color: #EF9A9A; font-weight: 600; }
+

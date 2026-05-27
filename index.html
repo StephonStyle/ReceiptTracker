@@ -54,7 +54,11 @@
 
   <div id="ocrLoading" class="loading" style="display:none">
     <div class="spinner"></div>
-    <div>AI 正在识别小票内容...</div>
+    <div id="ocrLoadingText">AI 正在识别小票内容...</div>
+    <div id="ocrProgressBar" style="display:none;margin-top:12px;background:var(--gray-100);border-radius:6px;height:8px;overflow:hidden;max-width:260px;margin-left:auto;margin-right:auto;">
+      <div id="ocrProgressFill" style="height:100%;width:0%;background:var(--primary);border-radius:6px;transition:width 0.3s ease;"></div>
+    </div>
+    <div id="ocrProgressLabel" style="font-size:12px;color:var(--gray-400);margin-top:6px;"></div>
   </div>
 
   <div id="ocrResult" style="display:none">
@@ -216,6 +220,12 @@
     <input type="date" id="anaStart" onchange="refreshAnalysis()">
     <span style="color:var(--gray-400);align-self:center;">~</span>
     <input type="date" id="anaEnd" onchange="refreshAnalysis()">
+    <select id="anaCurrency" onchange="refreshAnalysis()" style="padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:13px;background:white;">
+      <option value="CNY">¥ CNY</option>
+      <option value="EUR">€ EUR</option>
+      <option value="USD">$ USD</option>
+      <option value="GBP">£ GBP</option>
+    </select>
     <button class="btn btn-sm btn-outline" onclick="document.getElementById('anaStart').value='';document.getElementById('anaEnd').value='';refreshAnalysis()">清除</button>
   </div>
 
@@ -224,7 +234,7 @@
     <div class="stat-grid" id="anaStats">
       <div class="stat-item"><div class="stat-label">总支出</div><div class="stat-value primary" id="anaTotal">¥0</div></div>
       <div class="stat-item"><div class="stat-label">总笔数</div><div class="stat-value" id="anaCount">0</div></div>
-      <div class="stat-item"><div class="stat-label">笔均</div><div class="stat-value warning" id="anaAvg">¥0</div></div>
+      <!-- 笔均已移除，位置留待后续功能 -->
     </div>
   </div>
 
@@ -235,6 +245,16 @@
 
   <div class="card">
     <div class="card-title">📈 每日趋势</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
+      <span style="font-size:12px;color:var(--gray-500);white-space:nowrap;">时间范围</span>
+      <select id="anaTrendRange" onchange="refreshAnalysis()" style="padding:6px 10px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:12px;background:white;flex:1;">
+        <option value="7">近7天</option>
+        <option value="30" selected>近30天</option>
+        <option value="90">近90天</option>
+        <option value="365">近1年</option>
+        <option value="all">全部</option>
+      </select>
+    </div>
     <div class="chart-container"><canvas id="chartAnaDaily"></canvas></div>
   </div>
 
