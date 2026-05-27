@@ -586,7 +586,7 @@ function renderUploadGallery(area) {
   });
 }
 
-async function startOcr(fileIndex) {
+async async function startOcr(fileIndex) {
   var file;
   if (fileIndex !== undefined && currentOcrFiles[fileIndex]) {
     file = currentOcrFiles[fileIndex];
@@ -1229,6 +1229,12 @@ function addItemRow(item, opts) {
 
   var div = document.createElement('div');
   div.className = 'item-editor-row';
+  var itemDiscAmt = parseFloat((item && item.discount_amount) || 0);
+  var itemDiscReason = (item && item.discount_reason || '').trim();
+  var dsSym = (function(){ var c = document.getElementById('manualCurrency'); return c ? (currencyMap[c.value] || '€') : '€'; })();
+  var itemDiscAmt = parseFloat((item && item.discount_amount) || 0);
+  var itemDiscReason = (item && item.discount_reason || '').trim();
+  var dsSym = (function(){ var c = document.getElementById('ocrCurrency'); return c ? (currencyMap[c.value] || '€') : '€'; })();
   div.innerHTML = [
     '<div class="ie-name-row">',
     '<input type="text" placeholder="品牌" value="' + esc(brand) + '" onchange="recalcTotal()" class="ie-brand" style="max-width:70px;">',
@@ -1240,7 +1246,9 @@ function addItemRow(item, opts) {
     '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="recalcTotal()" class="ie-price">',
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();recalcTotal()" title="删除此行">✕</button>'
-  ].join('');
+  ,
+    (itemDiscAmt ? '<div class="item-discount-line" style="font-size:11px;color:#EF9A9A;padding:2px 0 4px 0;">商品折扣: −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</div>' : ''),
+    (itemDiscAmt ? '<div class="item-discount-line" style="font-size:11px;color:#EF9A9A;padding:2px 0 4px 0;">商品折扣: −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</div>' : '')].join('');
   container.appendChild(div);
 }
 
@@ -1347,7 +1355,17 @@ async function saveOcrReceipt() {
       discount_reason: item.discount_reason || '',
       sort_order: idx,
     }));
-    await sbPost('receipt_items', itemRows);
+    try {
+      await sbPost('receipt_items', itemRows);
+    } catch (e2) {
+      // Fallback: try without new columns
+      itemRows = items.map((item, idx) => ({
+        receipt_id: receiptId, name: item.name,
+        quantity: item.quantity, total_price: item.total_price,
+        category_name: item.category_name, sort_order: idx
+      }));
+      await sbPost('receipt_items', itemRows);
+    }
 
     showToast('✓ 账单已保存', 'success');
     retakePhoto();
@@ -1484,7 +1502,16 @@ async function saveManualReceipt() {
       category_name: item.category_name, discount_amount: item.discount_amount || 0, discount_reason: item.discount_reason || '',
       sort_order: idx
     }));
-    await sbPost('receipt_items', itemRows);
+    try {
+      await sbPost('receipt_items', itemRows);
+    } catch (e2) {
+      itemRows = items.map((item, idx) => ({
+        receipt_id: receiptId, name: item.name,
+        quantity: item.quantity, total_price: item.total_price,
+        category_name: item.category_name, sort_order: idx
+      }));
+      await sbPost('receipt_items', itemRows);
+    }
 
     showToast('✓ 账单已保存', 'success');
     document.getElementById('manualStore').value = '';
@@ -1784,6 +1811,9 @@ function addEditItemRow(item) {
   var unit = (item && item.unit) || '个';
   var div = document.createElement('div');
   div.className = 'item-editor-row';
+  var itemDiscAmt = parseFloat((item && item.discount_amount) || 0);
+  var itemDiscReason = (item && item.discount_reason || '').trim();
+  var dsSym = (function(){ var c = document.getElementById('editCurrency'); return c ? (currencyMap[c.value] || '€') : '€'; })();
   var unitHtml = '<select class="ie-unit" onchange="calcEditTotal()">';
   for (var ui = 0; ui < unitOptions.length; ui++) {
     unitHtml += '<option value="' + unitOptions[ui] + '" ' + (unit === unitOptions[ui] ? 'selected' : '') + '>' + unitOptions[ui] + '</option>';
@@ -1806,7 +1836,8 @@ function addEditItemRow(item) {
     '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="calcEditTotal()" class="ie-price">',
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();calcEditTotal()" title="删除此行">✕</button>'
-  ].join('');
+  ,
+    (itemDiscAmt ? '<div class="item-discount-line" style="font-size:11px;color:#EF9A9A;padding:2px 0 4px 0;">商品折扣: −' + dsSym + itemDiscAmt.toFixed(2) + (itemDiscReason ? ' (' + esc(itemDiscReason) + ')' : '') + '</div>' : '')].join('');
   container.appendChild(div);
 }
 
@@ -1871,7 +1902,18 @@ async function saveEditReceipt(id) {
       category_name: item.category_name, discount_amount: item.discount_amount || 0, discount_reason: item.discount_reason || '',
       sort_order: idx
     }));
-    if (itemRows.length) await sbPost('receipt_items', itemRows);
+    if (itemRows.length) {
+      try {
+        await sbPost('receipt_items', itemRows);
+      } catch (e2) {
+        itemRows = items.map((item, idx) => ({
+          receipt_id: id, name: item.name,
+          quantity: item.quantity, total_price: item.total_price,
+          category_name: item.category_name, sort_order: idx
+        }));
+        if (itemRows.length) await sbPost('receipt_items', itemRows);
+      }
+    }
 
     showToast('✓ 已更新', 'success');
     showReceiptDetail(id);
