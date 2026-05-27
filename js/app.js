@@ -1207,6 +1207,9 @@ function addItemRow(item, opts) {
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
+  if (cat === '超市购物' && item && item.sub_category) {
+    cat = '超市购物-' + item.sub_category;
+  }
   var unit = (item && item.unit) || '个';
 
   var unitHtml = '<select class="ie-unit" onchange="recalcTotal()">';
@@ -1373,9 +1376,15 @@ function addManualItemRow(item) {
   var nameEn = item ? (item.name_en || item.name || '') : '';
   var nameCn = (item && item.name_cn) ? item.name_cn : translateItem(nameEn || (item ? item.name : ''));
   var brand = (item && item.brand_name) || '';
+  if (brand && nameEn && nameEn.toLowerCase().startsWith(brand.toLowerCase())) {
+    nameEn = nameEn.substring(brand.length).trim();
+  }
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
+  if (cat === '超市购物' && item && item.sub_category) {
+    cat = '超市购物-' + item.sub_category;
+  }
   var unit = (item && item.unit) || '个';
   var div = document.createElement('div');
   div.className = 'item-editor-row';
@@ -1755,6 +1764,9 @@ function addEditItemRow(item) {
   var nameEn = item ? (item.name_en || '') : '';
   var nameCn = item ? (item.name_cn || '') : '';
   var brand = item ? (item.brand_name || '') : '';
+  if (brand && nameEn && nameEn.toLowerCase().startsWith(brand.toLowerCase())) {
+    nameEn = nameEn.substring(brand.length).trim();
+  }
   // Fallback: parse from old combined format
   if (!nameEn && !nameCn && item && item.name) {
     var parsed = parseStoredName(item.name);
@@ -1764,6 +1776,9 @@ function addEditItemRow(item) {
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
+  if (cat === '超市购物' && item && item.sub_category) {
+    cat = '超市购物-' + item.sub_category;
+  }
   var unit = (item && item.unit) || '个';
   var div = document.createElement('div');
   div.className = 'item-editor-row';
