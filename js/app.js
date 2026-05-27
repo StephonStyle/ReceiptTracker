@@ -649,7 +649,11 @@ async function startOcr(fileIndex) {
   updateOcrProgress('compress');
 
   try {
-    await processSingleOcr();
+    var receipt = await processSingleOcr();
+    document.getElementById('ocrLoading').style.display = 'none';
+    document.getElementById('uploadArea').style.display = 'none';
+    fillOcrResult(receipt);
+    document.getElementById('ocrResult').style.display = 'block';
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
     document.getElementById('ocrLoading').style.display = 'none';
@@ -1602,30 +1606,35 @@ function searchReceipts() { listPage = 1; loadReceiptList(); }
 // ======================== SWIPE TO DELETE ========================
 var swipeState = null;
 function swipeStart(e) {
-  var card = e.currentTarget;
-  var touch = e.touches[0];
-  swipeState = { card: card, startX: touch.clientX, currentX: touch.clientX };
+  var content = e.currentTarget.querySelector('.rc-content');
+  if (!content) return;
+  var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  swipeState = { content: content, startX: clientX, currentX: clientX };
 }
 function swipeMove(e) {
   if (!swipeState) return;
-  var touch = e.touches[0];
-  swipeState.currentX = touch.clientX;
+  var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  swipeState.currentX = clientX;
   var dx = swipeState.currentX - swipeState.startX;
   if (dx < 0) {
     var translate = Math.max(dx, -80);
-    swipeState.card.style.transform = 'translateX(' + translate + 'px)';
-    swipeState.card.style.transition = 'none';
+    swipeState.content.style.transform = 'translateX(' + translate + 'px)';
+    swipeState.content.style.transition = 'none';
+  } else if (dx > 0 && swipeState.content.style.transform) {
+    // Reset on right-swipe
+    swipeState.content.style.transform = 'translateX(0)';
+    swipeState.content.style.transition = 'none';
   }
 }
 function swipeEnd(e) {
   if (!swipeState) return;
   var dx = swipeState.currentX - swipeState.startX;
   if (dx < -40) {
-    swipeState.card.style.transform = 'translateX(-80px)';
-    swipeState.card.style.transition = 'transform 0.2s ease';
+    swipeState.content.style.transform = 'translateX(-80px)';
+    swipeState.content.style.transition = 'transform 0.2s ease';
   } else {
-    swipeState.card.style.transform = 'translateX(0)';
-    swipeState.card.style.transition = 'transform 0.2s ease';
+    swipeState.content.style.transform = 'translateX(0)';
+    swipeState.content.style.transition = 'transform 0.2s ease';
   }
   swipeState = null;
 }
@@ -1664,7 +1673,7 @@ async function loadReceiptList(page) {
     }
 
     container.innerHTML = pageData.map(r => `
-      <div class="receipt-card" data-id="${r.id}" ontouchstart="swipeStart(event)" ontouchmove="swipeMove(event)" ontouchend="swipeEnd(event)">
+      <div class="receipt-card" data-id="${r.id}" ontouchstart="swipeStart(event)" ontouchmove="swipeMove(event)" ontouchend="swipeEnd(event)" onmousedown="swipeStart(event)" onmousemove="swipeMove(event)" onmouseup="swipeEnd(event)" onmouseleave="swipeEnd(event)">
         <div class="rc-content" onclick="showReceiptDetail(${r.id})">
           <div class="rc-header">
             <div class="rc-store">${esc(r.store_name || '未知商家')}</div>
