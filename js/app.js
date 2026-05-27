@@ -521,7 +521,7 @@ async function testApiConnection() {
 function updateOcrProgress(step, detail) {
   const steps = [
     { key: 'compress', label: '正在压缩图片...' },
-    { key: 'api', label: '正在调用 AI 识别...' },
+    { key: 'api', label: '正在分析你的单据...' },
     { key: 'parse', label: '正在解析识别结果...' },
     { key: 'done', label: '识别完成 ✓' },
   ];
