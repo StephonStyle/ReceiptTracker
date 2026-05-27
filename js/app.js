@@ -1120,6 +1120,21 @@ function fileToBase64(file) {
   });
 }
 
+function mergeItems(items) {
+  if (!items || items.length <= 1) return items;
+  var groups = {};
+  items.forEach(function(item) {
+    var key = (item.name_cn || '') + '|' + (item.name_en || '') + '|' + (item.brand_name || '') + '|' + (item.unit_price || 0);
+    if (groups[key]) {
+      groups[key].quantity = (parseFloat(groups[key].quantity) || 0) + (parseFloat(item.quantity) || 0);
+      groups[key].total_price = (parseFloat(groups[key].total_price) || 0) + (parseFloat(item.total_price) || 0);
+    } else {
+      groups[key] = Object.assign({}, item);
+    }
+  });
+  return Object.values(groups);
+}
+
 function fillOcrResult(receipt) {
   const uncertain = new Set(receipt.uncertain_fields || []);
 
@@ -1158,7 +1173,7 @@ function fillOcrResult(receipt) {
   const container = document.getElementById('ocrItems');
   container.innerHTML = '';
   const items = (receipt.items && receipt.items.length) ? receipt.items : [{ name: '', name_cn: '', quantity: 1, unit_price: 0, total_price: 0, category_name: '其他' }];
-  items.forEach((item, i) => {
+  mergeItems(items).forEach((item, i) => {
     addItemRow(item);
   });
   recalcTotal();
@@ -1623,7 +1638,7 @@ async function showReceiptDetail(id) {
         <div class="detail-section">
           <h3>🛒 商品明细</h3>
           <ul class="item-list">
-            ${(r.receipt_items || []).map(i => {
+            ${mergeItems(r.receipt_items || []).map(i => {
               // New format: use separate fields
               var brand = i.brand_name || '';
               var nameCn = i.name_cn || '';
