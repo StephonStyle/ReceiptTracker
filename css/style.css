@@ -357,25 +357,26 @@ body {
   overflow: hidden;
   touch-action: pan-y;
 }
-.receipt-card .rc-content {
-  position: relative;
-  z-index: 2;
+.receipt-card .rc-swipeable {
+  display: flex;
+  width: 100%;
   background: #fff;
-  border-radius: var(--radius);
-  transition: transform 0.2s ease;
+  transition: transform 0.25s ease;
+  will-change: transform;
+}
+.receipt-card .rc-content {
+  flex-shrink: 0;
+  width: 100%;
+  background: #fff;
 }
 .receipt-card .rc-delete {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  flex-shrink: 0;
   width: 80px;
   background: var(--danger);
-  color: white;
+  color: #fff;
   border: none;
   font-size: 14px;
   cursor: pointer;
-  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;

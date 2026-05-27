@@ -654,6 +654,8 @@ async function startOcr(fileIndex) {
   } catch (e) {
     document.getElementById('ocrLoading').style.display = 'none';
     diag('OCR失败: ' + e.message);
+    // Reset to camera on failure
+    retakePhoto();
     if (e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network')) {
       showToast('网络连接失败，请检查网络后重试', 'error');
     } else {
@@ -714,7 +716,7 @@ async function startAllOcr() {
     document.getElementById('ocrLoading').style.display = 'none';
     document.getElementById('ocrProgressBar').style.display = 'none';
     document.getElementById('ocrProgressLabel').style.display = 'none';
-    document.getElementById('uploadArea').style.display = 'block';
+    retakePhoto();
     showToast('全部识别失败，请重试', 'error');
   } else {
     document.getElementById('ocrLoading').style.display = 'none';
@@ -1602,7 +1604,7 @@ function searchReceipts() { listPage = 1; loadReceiptList(); }
 // ======================== SWIPE TO DELETE ========================
 var swipeState = null;
 function swipeStart(e) {
-  var content = e.currentTarget.querySelector('.rc-content');
+  var content = e.currentTarget.querySelector('.rc-swipeable');
   if (!content) return;
   var clientX = e.touches ? e.touches[0].clientX : e.clientX;
   swipeState = { content: content, startX: clientX, currentX: clientX };
@@ -1670,18 +1672,20 @@ async function loadReceiptList(page) {
 
     container.innerHTML = pageData.map(r => `
       <div class="receipt-card" data-id="${r.id}" ontouchstart="swipeStart(event)" ontouchmove="swipeMove(event)" ontouchend="swipeEnd(event)" onmousedown="swipeStart(event)" onmousemove="swipeMove(event)" onmouseup="swipeEnd(event)" onmouseleave="swipeEnd(event)">
-        <div class="rc-content" onclick="showReceiptDetail(${r.id})">
-          <div class="rc-header">
-            <div class="rc-store">${esc(r.store_name || '未知商家')}</div>
-            <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
+        <div class="rc-swipeable">
+          <div class="rc-content" onclick="showReceiptDetail(${r.id})">
+            <div class="rc-header">
+              <div class="rc-store">${esc(r.store_name || '未知商家')}</div>
+              <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
+            </div>
+            <div class="rc-meta">
+              <span>${r.receipt_date || '--'}</span>
+              <span>${(r.receipt_items || []).length} 件商品</span>
+              <span>${esc(r.payment_method) || '--'}</span>
+            </div>
           </div>
-          <div class="rc-meta">
-            <span>${r.receipt_date || '--'}</span>
-            <span>${(r.receipt_items || []).length} 件商品</span>
-            <span>${esc(r.payment_method) || '--'}</span>
-          </div>
+          <button class="rc-delete" onclick="event.stopPropagation();deleteReceipt(${r.id})">删除</button>
         </div>
-        <button class="rc-delete" onclick="event.stopPropagation();deleteReceipt(${r.id})">删除</button>
       </div>
     `).join('');
 
