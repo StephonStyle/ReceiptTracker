@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS receipts (
   receipt_number TEXT DEFAULT '',
   notes TEXT DEFAULT '',
   image_url TEXT DEFAULT '',
+  currency TEXT DEFAULT 'EUR',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -33,7 +34,10 @@ CREATE TABLE IF NOT EXISTS receipt_items (
   unit_price REAL DEFAULT 0,
   total_price REAL DEFAULT 0,
   category_name TEXT DEFAULT '其他',
+  sub_category TEXT DEFAULT '',
   discount_amount REAL DEFAULT 0,
+  discount_reason TEXT DEFAULT '',
+  unit TEXT DEFAULT '个',
   sort_order INTEGER DEFAULT 0
 );
 
@@ -67,6 +71,12 @@ CREATE POLICY "Public Access" ON receipt_items
 -- 迁移：为已存在的数据库添加新字段
 -- 如果表已存在且缺少字段，运行以下 SQL
 -- ========================================
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'EUR';
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS discount_reason TEXT DEFAULT '';
 ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS name_cn TEXT DEFAULT '';
 ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS name_en TEXT DEFAULT '';
 ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS brand_name TEXT DEFAULT '';
+ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS sub_category TEXT DEFAULT '';
+ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS discount_amount REAL DEFAULT 0;
+ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS discount_reason TEXT DEFAULT '';
+ALTER TABLE receipt_items ADD COLUMN IF NOT EXISTS unit TEXT DEFAULT '个';

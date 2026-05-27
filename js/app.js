@@ -271,7 +271,6 @@ async function refreshDashboard() {
 
     // Today's date for "today" scope
     renderTrendChart(trend);
-    renderCategoryChart(categories);
     renderRecentReceipts(allReceipts.slice(0, 5));
   } catch (e) {
     console.error('Dashboard error:', e);
@@ -309,21 +308,6 @@ function renderTrendChart(monthly) {
   charts.trend = new Chart(ctx, {
     type: 'bar', data: { labels: monthly.map(m => m.month.replace(/\d{4}-0?/, '') + '月'), datasets: [{ label: '支出', data: monthly.map(m => m.total), backgroundColor: 'rgba(79,70,229,0.7)', borderColor: '#4F46E5', borderWidth: 1, borderRadius: 4 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { callback: v => '¥' + v } }, x: { grid: { display: false }, ticks: { maxRotation: 0 } } } }
-  });
-}
-
-function renderCategoryChart(categories) {
-  const ctx = document.getElementById('chartCategory').getContext('2d');
-  if (charts.category) charts.category.destroy();
-  if (!categories.length) {
-    charts.category = new Chart(ctx, { type: 'doughnut', data: { labels: ['暂无'], datasets: [{ data: [1], backgroundColor: ['#E5E7EB'] }] }, options: { responsive: true, maintainAspectRatio: false } });
-    return;
-  }
-  const colors = ['#4F46E5', '#F59E0B', '#EF4444', '#10B981', '#8B5CF6', '#EC4899', '#3B82F6', '#14B8A6', '#6366F1', '#F97316', '#22C55E', '#9CA3AF'];
-  charts.category = new Chart(ctx, {
-    type: 'doughnut',
-    data: { labels: categories.map(c => c.name + '  ¥' + c.total), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } } } }
   });
 }
 
@@ -1044,13 +1028,17 @@ function getOcrPrompt() {
   - name: 商品原文名称（保持收据上的原文，通常是英文）
   - name_en: 商品英文名（原文如果是英文则保留，如果是其他语言则留空）
   - name_cn: 商品中文名（根据商品原文翻译成中文）
-  - brand_name: 品牌名称（如果有品牌信息则提取，没有则留空）
+  - brand_name: 品牌名称（如果是超市自有品牌如"Tesco Everyday Value"，直接填超市名如"Tesco"；没有则留空）
+  - discount_amount: 该商品的折扣金额（没有则为0）
+  - discount_reason: 该商品的折扣原因或说明（没有则为空字符串）
   - quantity: 数量（数字，默认为1）
   - unit_price: 单价（数字，如果没有单价则和total_price相同）
   - total_price: 该商品总价
-  - category_name: 根据商品名称判断类别（餐饮美食/超市购物/交通出行/日用百货/数码电子/医疗健康/其他）
+  - category_name: 根据商品名称判断类别（餐饮美食/超市购物/交通出行/日用百货/数码电子/医疗健康/其他）；如果是超市购物，在 sub_category 字段填写更细的分类如坚果、蔬菜、宠物食品、糕点面包、饮料、乳制品、肉类海鲜、水果、零食、日用品等
+  - sub_category: 商品子类别（仅当 category_name 为"超市购物"时填写，如坚果、蔬菜、宠物食品等；其他类别留空）
 - subtotal: 小计金额
 - discount_amount: 折扣金额（没有则为0）
+- discount_reason: 折扣原因或说明（没有则为空字符串）
 - tax_amount: 税费金额（没有则为0）
 - total_amount: 总计/实付金额
 - payment_method: 支付方式，从以下选项中选最匹配的一个：Visa/Mastercard/American Express/Debit Card/现金/微信支付/支付宝/Gift Card/其他。如有多种支付，选主要的一种。
@@ -1082,7 +1070,7 @@ function getOcrPrompt() {
   "receipt_date": "2024-01-15",
   "receipt_time": "14:30",
   "items": [
-    {"name": "Coca Cola", "name_en": "Coca Cola", "name_cn": "可口可乐", "brand_name": "Coca-Cola", "quantity": 2, "unit_price": 3.5, "total_price": 7.0, "category_name": "餐饮美食"}
+    {"name": "Coca Cola", "name_en": "Coca Cola", "name_cn": "可口可乐", "brand_name": "Coca-Cola", "quantity": 2, "unit_price": 3.5, "total_price": 7.0, "category_name": "超市购物", "sub_category": "饮料", "discount_amount": 0, "discount_reason": ""}
   ],
   "subtotal": 100.0,
   "discount_amount": 5.0,
@@ -1228,7 +1216,7 @@ function addItemRow(item, opts) {
   unitHtml += '</select>';
 
   var catHtml = '<select class="ie-cat" onchange="recalcTotal()">';
-  var cats = ['餐饮美食','超市购物','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  var cats = ['餐饮美食','超市购物','超市购物-坚果','超市购物-蔬菜','超市购物-宠物食品','超市购物-糕点面包','超市购物-饮料','超市购物-乳制品','超市购物-肉类海鲜','超市购物-水果','超市购物-零食','超市购物-日用品','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
   for (var ci = 0; ci < cats.length; ci++) {
     catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
   }
@@ -1328,7 +1316,7 @@ async function saveOcrReceipt() {
       store_name: (document.getElementById('ocrStore')?.value || '').trim(),
       receipt_date: document.getElementById('ocrDate')?.value || '',
       receipt_time: document.getElementById('ocrTime')?.value || '',
-      total_amount: Math.max(0, (subtotal || itemTotal) - discount - tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1350,6 +1338,8 @@ async function saveOcrReceipt() {
       unit_price: item.unit_price,
       total_price: item.total_price,
       category_name: item.category_name,
+      discount_amount: item.discount_amount || 0,
+      discount_reason: item.discount_reason || '',
       sort_order: idx,
     }));
     await sbPost('receipt_items', itemRows);
@@ -1395,7 +1385,7 @@ function addManualItemRow(item) {
   }
   unitHtml += '</select>';
   var catHtml = '<select class="ie-cat" onchange="calcManualTotal()">';
-  var cats = ['餐饮美食','超市购物','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  var cats = ['餐饮美食','超市购物','超市购物-坚果','超市购物-蔬菜','超市购物-宠物食品','超市购物-糕点面包','超市购物-饮料','超市购物-乳制品','超市购物-肉类海鲜','超市购物-水果','超市购物-零食','超市购物-日用品','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
   for (var ci = 0; ci < cats.length; ci++) {
     catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
   }
@@ -1464,7 +1454,7 @@ async function saveManualReceipt() {
       store_name: document.getElementById('manualStore').value.trim(),
       receipt_date: document.getElementById('manualDate').value,
       receipt_time: document.getElementById('manualTime').value,
-      total_amount: Math.max(0, (subtotal || itemTotal) - discount - tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1480,7 +1470,8 @@ async function saveManualReceipt() {
       name_cn: item.name_cn || '', name_en: item.name_en || '', brand_name: item.brand_name || '',
       quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
-      category_name: item.category_name, sort_order: idx
+      category_name: item.category_name, discount_amount: item.discount_amount || 0, discount_reason: item.discount_reason || '',
+      sort_order: idx
     }));
     await sbPost('receipt_items', itemRows);
 
@@ -1598,16 +1589,22 @@ async function showReceiptDetail(id) {
               var displayParts = [];
               if (brand) displayParts.push(esc(brand));
               if (nameCn) displayParts.push(esc(nameCn));
-              if (nameEn && nameEn !== nameCn) displayParts.push('<span style="color:var(--gray-400);font-size:12px;">' + esc(nameEn) + '</span>');
+              var displayEn = nameEn;
+              if (brand && displayEn && displayEn.toLowerCase().startsWith(brand.toLowerCase())) {
+                displayEn = displayEn.substring(brand.length).trim();
+              }
+              if (displayEn && displayEn !== nameCn && displayEn !== brand) displayParts.push('<span style="color:var(--gray-400);font-size:12px;">' + esc(displayEn) + '</span>');
               var displayHtml = displayParts.join(' ') || esc(i.name);
               var itemDiscount = parseFloat(i.discount_amount || 0);
+              var itemDiscountReason = (i.discount_reason || '').trim();
               return `
               <li class="item-li">
                 <div class="item-main">
                   <span class="item-name">${displayHtml}</span>
                   <span class="item-qty">×${i.quantity}${i.unit ? i.unit : ''}</span>
-                  <span class="item-price">${curSym}${Number(i.total_price).toFixed(2)}${itemDiscount ? ' <span class="item-discount" style="color:#EF9A9A;font-size:11px;">−' + curSym + itemDiscount.toFixed(2) + '</span>' : ''}</span>
+                  <span class="item-price">${curSym}${Number(i.total_price).toFixed(2)}</span>
                 </div>
+                ${itemDiscount ? '<div class="item-discount-line" style="font-size:12px;color:#EF9A9A;margin-top:2px;">折扣 −' + curSym + itemDiscount.toFixed(2) + (itemDiscountReason ? ' (' + esc(itemDiscountReason) + ')' : '') + '</div>' : ''}
               </li>`;
             }).join('')}
           </ul>
@@ -1623,7 +1620,7 @@ async function showReceiptDetail(id) {
             </div>
             ${r.discount_amount ? `
             <div class="pb-row pb-discount">
-              <span class="pb-label">− 折扣优惠</span>
+              <span class="pb-label">− 折扣${r.discount_reason ? ' (' + esc(r.discount_reason) + ')' : ''}</span>
               <span class="pb-value">− ${curSym}${Number(r.discount_amount).toFixed(2)}</span>
             </div>` : ''}
             ${r.tax_amount ? `
@@ -1776,7 +1773,7 @@ function addEditItemRow(item) {
   }
   unitHtml += '</select>';
   var catHtml = '<select class="ie-cat" onchange="calcEditTotal()">';
-  var cats = ['餐饮美食','超市购物','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  var cats = ['餐饮美食','超市购物','超市购物-坚果','超市购物-蔬菜','超市购物-宠物食品','超市购物-糕点面包','超市购物-饮料','超市购物-乳制品','超市购物-肉类海鲜','超市购物-水果','超市购物-零食','超市购物-日用品','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
   for (var ci = 0; ci < cats.length; ci++) {
     catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
   }
@@ -1840,7 +1837,7 @@ async function saveEditReceipt(id) {
       store_name: document.getElementById('editStore').value.trim(),
       receipt_date: document.getElementById('editDate').value,
       receipt_time: document.getElementById('editTime').value,
-      total_amount: Math.max(0, (subtotal || itemTotal) - discount - tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1854,7 +1851,8 @@ async function saveEditReceipt(id) {
       name_cn: item.name_cn || '', name_en: item.name_en || '', brand_name: item.brand_name || '',
       quantity: item.quantity,
       unit_price: item.total_price, total_price: item.total_price,
-      category_name: item.category_name, sort_order: idx
+      category_name: item.category_name, discount_amount: item.discount_amount || 0, discount_reason: item.discount_reason || '',
+      sort_order: idx
     }));
     if (itemRows.length) await sbPost('receipt_items', itemRows);
 
