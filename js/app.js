@@ -586,7 +586,7 @@ function renderUploadGallery(area) {
   });
 }
 
-async async function startOcr(fileIndex) {
+async function startOcr(fileIndex) {
   var file;
   if (fileIndex !== undefined && currentOcrFiles[fileIndex]) {
     file = currentOcrFiles[fileIndex];
