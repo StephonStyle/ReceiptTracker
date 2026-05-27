@@ -649,11 +649,7 @@ async function startOcr(fileIndex) {
   updateOcrProgress('compress');
 
   try {
-    var receipt = await processSingleOcr();
-    document.getElementById('ocrLoading').style.display = 'none';
-    document.getElementById('uploadArea').style.display = 'none';
-    fillOcrResult(receipt);
-    document.getElementById('ocrResult').style.display = 'block';
+    await processSingleOcr();
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
     document.getElementById('ocrLoading').style.display = 'none';
