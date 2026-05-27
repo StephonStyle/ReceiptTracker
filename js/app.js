@@ -2,6 +2,22 @@
 // 账单管家 - Full frontend with Supabase + Claude API
 // ============================================================
 
+// ======================== CONFIRM DIALOG ========================
+function showConfirmDialog(message) {
+  return new Promise(function(resolve) {
+    document.getElementById('confirmMessage').textContent = message;
+    document.getElementById('confirmModal').style.display = 'flex';
+    document.getElementById('confirmOk').onclick = function() {
+      document.getElementById('confirmModal').style.display = 'none';
+      resolve(true);
+    };
+    document.getElementById('confirmCancel').onclick = function() {
+      document.getElementById('confirmModal').style.display = 'none';
+      resolve(false);
+    };
+  });
+}
+
 // ======================== SUPABASE CONFIG ========================
 const SB_URL = 'https://dpfdndvxhsbdngvypoie.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRwZmRuZHZ4aHNiZG5ndnlwb2llIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgyMjg4NDIsImV4cCI6MjA5MzgwNDg0Mn0.Np3v76r6q9sfu0LsP82UqQmRQH8tVhaF0G2fzlqYoeQ';
@@ -311,6 +327,21 @@ function renderTrendChart(monthly) {
   });
 }
 
+function getChartColor(index) {
+  var baseColors = ['#4F46E5', '#F59E0B', '#EF4444', '#10B981', '#8B5CF6', '#EC4899', '#3B82F6', '#14B8A6', '#F97316', '#22C55E', '#A855F7', '#06B6D4'];
+  if (index < baseColors.length) return baseColors[index];
+  // For extras, generate striped pattern from base color
+  var c = baseColors[index % baseColors.length];
+  var cv = document.createElement('canvas');
+  cv.width = 8; cv.height = 8;
+  var cx = cv.getContext('2d');
+  cx.fillStyle = c;
+  cx.fillRect(0, 0, 8, 8);
+  cx.fillStyle = 'rgba(255,255,255,0.25)';
+  cx.fillRect(0, 0, 4, 8);
+  return cx.createPattern(cv, 'repeat');
+}
+
 function renderAnaCategoryChart(categories) {
   const ctx = document.getElementById('chartAnaCategory').getContext('2d');
   if (charts.anaCategory) charts.anaCategory.destroy();
@@ -318,11 +349,10 @@ function renderAnaCategoryChart(categories) {
     charts.anaCategory = new Chart(ctx, { type: 'doughnut', data: { labels: ['暂无'], datasets: [{ data: [1], backgroundColor: ['#E5E7EB'] }] }, options: { responsive: true, maintainAspectRatio: false } });
     return;
   }
-  const colors = ['#4F46E5', '#F59E0B', '#EF4444', '#10B981', '#8B5CF6', '#EC4899', '#3B82F6', '#14B8A6', '#6366F1', '#F97316', '#22C55E', '#9CA3AF'];
   var s = getAnaSymbol();
   charts.anaCategory = new Chart(ctx, {
     type: 'doughnut',
-    data: { labels: categories.map(c => c.name + '  ' + s + c.total), datasets: [{ data: categories.map(c => c.total), backgroundColor: colors.slice(0, categories.length), borderWidth: 2 }] },
+    data: { labels: categories.map(c => c.name + '  ' + s + c.total), datasets: [{ data: categories.map(c => c.total), backgroundColor: categories.map(function(_, i) { return getChartColor(i); }), borderWidth: 2 }] },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 11 }, padding: 8 } } } }
   });
 }
@@ -1035,8 +1065,8 @@ function getOcrPrompt() {
   - unit: 单位（根据商品类型选择最合适的，如瓶/盒/袋/包/罐/杯/只/条/双/份/箱/件/打/板；饮料用"瓶"或"罐"，零食用"袋"或"包"，宠物食品用"罐"或"袋"，坚果用"袋"或"包"，蔬菜水果用"个"或"袋"，肉类海鲜用"份"或"盒"等）
   - unit_price: 单价（数字，如果没有单价则和total_price相同）
   - total_price: 该商品总价
-  - category_name: 根据商品名称判断类别（餐饮美食/超市购物/交通出行/日用百货/数码电子/医疗健康/其他）；如果是超市购物，在 sub_category 字段填写更细的分类如坚果、蔬菜、宠物食品、糕点面包、饮料、乳制品、肉类海鲜、水果、零食、日用品等
-  - sub_category: 商品子类别（仅当 category_name 为"超市购物"时填写，如坚果、蔬菜、宠物食品等；其他类别留空）
+  - category_name: 根据商品名称判断类别（餐饮美食/超市/交通出行/日用百货/数码电子/医疗健康/其他）；如果是超市，在 sub_category 字段填写更细的分类如蔬菜、水果、肉类海鲜、乳制品、鸡蛋、面包糕点、饮料、零食、坚果、速食食品、预制食品、粮油调味、宠物食品、日用品等
+  - sub_category: 商品子类别（仅当 category_name 为"超市"时填写，如蔬菜、水果、肉类海鲜等；其他类别留空）
 - subtotal: 小计金额
 - discount_amount: 折扣金额（没有则为0）
 - discount_reason: 折扣原因或说明（没有则为空字符串）
@@ -1053,7 +1083,7 @@ function getOcrPrompt() {
 5. 所有字段都必须出现在JSON中
 6. 只返回JSON，不要有额外的说明文字
 7. **非常重要**：如果不确定某个字段，设为空/0，并在下面列出。
-8. **非常重要**：items 中每项必须包含 discount_amount、discount_reason、sub_category（超市购物类必填）、unit 字段
+8. **非常重要**：items 中每项必须包含 discount_amount、discount_reason、sub_category（超市类必填）、unit 字段
 
 除了上面的数据字段外，请在JSON根部额外包含：
 - "uncertain_fields": 一个数组，列出你不确定的字段路径，例如 ["store_name", "items[1].name", "total_amount"]
@@ -1124,10 +1154,11 @@ function mergeItems(items) {
   if (!items || items.length <= 1) return items;
   var groups = {};
   items.forEach(function(item) {
-    var key = (item.name_cn || '') + '|' + (item.name_en || '') + '|' + (item.brand_name || '') + '|' + (item.unit_price || 0);
+    var key = (item.name_cn || item.name || '') + '|' + (item.name_en || item.name || '') + '|' + (item.brand_name || '') + '|' + (item.unit_price || 0);
     if (groups[key]) {
       groups[key].quantity = (parseFloat(groups[key].quantity) || 0) + (parseFloat(item.quantity) || 0);
       groups[key].total_price = (parseFloat(groups[key].total_price) || 0) + (parseFloat(item.total_price) || 0);
+      groups[key].discount_amount = (parseFloat(groups[key].discount_amount) || 0) + (parseFloat(item.discount_amount) || 0);
     } else {
       groups[key] = Object.assign({}, item);
     }
@@ -1173,6 +1204,9 @@ function fillOcrResult(receipt) {
   const container = document.getElementById('ocrItems');
   container.innerHTML = '';
   const items = (receipt.items && receipt.items.length) ? receipt.items.filter(function(it) { return it.name || it.name_en || it.name_cn; }).filter(function(it) { var n = (it.name_en || it.name || it.name_cn || '').trim(); return n.length > 0 && isNaN(Number(n)); }) : [{ name: '', name_cn: '', quantity: 1, unit_price: 0, total_price: 0, category_name: '其他' }];
+  // Pre-discount subtotal = item total + item discounts
+  var baseTotal = items.reduce(function(st, it) { return st + (parseFloat(it.total_price)||0) + (parseFloat(it.discount_amount)||0); }, 0);
+  document.getElementById('ocrSubtotal').value = baseTotal ? baseTotal.toFixed(2) : '';
   mergeItems(items).forEach((item, i) => {
     addItemRow(item);
   });
@@ -1230,8 +1264,8 @@ function addItemRow(item, opts) {
   }
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
-  if (cat === '超市购物' && item && item.sub_category) {
-    cat = '超市购物-' + item.sub_category;
+  if (cat === '超市' && item && item.sub_category) {
+    cat = '超市-' + item.sub_category;
   }
   var unit = (item && item.unit) || '个';
 
@@ -1242,7 +1276,7 @@ function addItemRow(item, opts) {
   unitHtml += '</select>';
 
   var catHtml = '<select class="ie-cat" onchange="recalcTotal()">';
-  var cats = ['餐饮美食','超市购物','超市购物-坚果','超市购物-蔬菜','超市购物-宠物食品','超市购物-糕点面包','超市购物-饮料','超市购物-乳制品','超市购物-肉类海鲜','超市购物-水果','超市购物-零食','超市购物-日用品','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  var cats = ['餐饮美食','超市','超市-蔬菜','超市-水果','超市-肉类海鲜','超市-乳制品','超市-鸡蛋','超市-面包糕点','超市-饮料','超市-零食','超市-坚果','超市-速食食品','超市-预制食品','超市-粮油调味','超市-宠物食品','超市-日用品','超市-其他','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
   for (var ci = 0; ci < cats.length; ci++) {
     catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
   }
@@ -1351,7 +1385,7 @@ async function saveOcrReceipt() {
       store_name: (document.getElementById('ocrStore')?.value || '').trim(),
       receipt_date: document.getElementById('ocrDate')?.value || '',
       receipt_time: document.getElementById('ocrTime')?.value || '',
-      total_amount: Math.max(0, (subtotal || itemTotal) - discount + tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - items.reduce(function(s,it){return s+(parseFloat(it.discount_amount)||0);},0) - discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1427,10 +1461,13 @@ function addManualItemRow(item) {
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
-  if (cat === '超市购物' && item && item.sub_category) {
-    cat = '超市购物-' + item.sub_category;
+  if (cat === '超市' && item && item.sub_category) {
+    cat = '超市-' + item.sub_category;
   }
   var unit = (item && item.unit) || '个';
+  var itemDiscAmt = parseFloat((item && item.discount_amount) || 0);
+  var itemDiscReason = (item && item.discount_reason || '').trim();
+  var dsSym = (function(){ var c = document.getElementById('manualCurrency'); return c ? (currencyMap[c.value] || '€') : '€'; })();
   var div = document.createElement('div');
   div.className = 'item-editor-row';
   var unitHtml = '<select class="ie-unit" onchange="calcManualTotal()">';
@@ -1439,7 +1476,7 @@ function addManualItemRow(item) {
   }
   unitHtml += '</select>';
   var catHtml = '<select class="ie-cat" onchange="calcManualTotal()">';
-  var cats = ['餐饮美食','超市购物','超市购物-坚果','超市购物-蔬菜','超市购物-宠物食品','超市购物-糕点面包','超市购物-饮料','超市购物-乳制品','超市购物-肉类海鲜','超市购物-水果','超市购物-零食','超市购物-日用品','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  var cats = ['餐饮美食','超市','超市-蔬菜','超市-水果','超市-肉类海鲜','超市-乳制品','超市-鸡蛋','超市-面包糕点','超市-饮料','超市-零食','超市-坚果','超市-速食食品','超市-预制食品','超市-粮油调味','超市-宠物食品','超市-日用品','超市-其他','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
   for (var ci = 0; ci < cats.length; ci++) {
     catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
   }
@@ -1455,7 +1492,8 @@ function addManualItemRow(item) {
     '<input type="number" placeholder="金额" value="' + price + '" step="0.01" onchange="calcManualTotal()" class="ie-price">',
     catHtml,
     '<button class="remove-item" onclick="this.parentElement.remove();calcManualTotal()" title="删除此行">✕</button>'
-  ].join('');
+  ,
+    (itemDiscAmt ? '<div class="ie-discount-row"><input type="hidden" class="ie-disc-amt" value="' + itemDiscAmt.toFixed(2) + '"><input type="hidden" class="ie-disc-reason" value="' + esc(itemDiscReason) + '">' + (itemDiscReason ? esc(itemDiscReason) : '优惠') + ' −' + dsSym + itemDiscAmt.toFixed(2) + '</div>' : '')].join('');
   container.appendChild(div);
 }
 
@@ -1510,7 +1548,7 @@ async function saveManualReceipt() {
       store_name: document.getElementById('manualStore').value.trim(),
       receipt_date: document.getElementById('manualDate').value,
       receipt_time: document.getElementById('manualTime').value,
-      total_amount: Math.max(0, (subtotal || itemTotal) - discount + tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - items.reduce(function(s,it){return s+(parseFloat(it.discount_amount)||0);},0) - discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,
@@ -1561,6 +1599,37 @@ async function saveManualReceipt() {
 // ======================== RECEIPT LIST ========================
 function searchReceipts() { listPage = 1; loadReceiptList(); }
 
+// ======================== SWIPE TO DELETE ========================
+var swipeState = null;
+function swipeStart(e) {
+  var card = e.currentTarget;
+  var touch = e.touches[0];
+  swipeState = { card: card, startX: touch.clientX, currentX: touch.clientX };
+}
+function swipeMove(e) {
+  if (!swipeState) return;
+  var touch = e.touches[0];
+  swipeState.currentX = touch.clientX;
+  var dx = swipeState.currentX - swipeState.startX;
+  if (dx < 0) {
+    var translate = Math.max(dx, -80);
+    swipeState.card.style.transform = 'translateX(' + translate + 'px)';
+    swipeState.card.style.transition = 'none';
+  }
+}
+function swipeEnd(e) {
+  if (!swipeState) return;
+  var dx = swipeState.currentX - swipeState.startX;
+  if (dx < -40) {
+    swipeState.card.style.transform = 'translateX(-80px)';
+    swipeState.card.style.transition = 'transform 0.2s ease';
+  } else {
+    swipeState.card.style.transform = 'translateX(0)';
+    swipeState.card.style.transition = 'transform 0.2s ease';
+  }
+  swipeState = null;
+}
+
 async function loadReceiptList(page) {
   if (page) listPage = page;
   const kw = document.getElementById('listKeyword').value.trim();
@@ -1595,16 +1664,19 @@ async function loadReceiptList(page) {
     }
 
     container.innerHTML = pageData.map(r => `
-      <div class="receipt-card" onclick="showReceiptDetail(${r.id})">
-        <div class="rc-header">
-          <div class="rc-store">${esc(r.store_name || '未知商家')}</div>
-          <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
+      <div class="receipt-card" data-id="${r.id}" ontouchstart="swipeStart(event)" ontouchmove="swipeMove(event)" ontouchend="swipeEnd(event)">
+        <div class="rc-content" onclick="showReceiptDetail(${r.id})">
+          <div class="rc-header">
+            <div class="rc-store">${esc(r.store_name || '未知商家')}</div>
+            <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
+          </div>
+          <div class="rc-meta">
+            <span>${r.receipt_date || '--'}</span>
+            <span>${(r.receipt_items || []).length} 件商品</span>
+            <span>${esc(r.payment_method) || '--'}</span>
+          </div>
         </div>
-        <div class="rc-meta">
-          <span>${r.receipt_date || '--'}</span>
-          <span>${(r.receipt_items || []).length} 件商品</span>
-          <span>${esc(r.payment_method) || '--'}</span>
-        </div>
+        <button class="rc-delete" onclick="event.stopPropagation();deleteReceipt(${r.id})">删除</button>
       </div>
     `).join('');
 
@@ -1680,8 +1752,8 @@ async function showReceiptDetail(id) {
           <h3>💰 付款明细</h3>
           <div class="payment-breakdown">
             <div class="pb-row">
-              <span class="pb-label">小计（商品合计）</span>
-              <span class="pb-value">${curSym}${Number(r.subtotal || 0).toFixed(2)}</span>
+              <span class="pb-label">原价合计</span>
+              <span class="pb-value">${curSym}${Number((r.receipt_items || []).reduce(function(s,i){return s+(parseFloat(i.total_price)||0)+(parseFloat(i.discount_amount)||0);},0)).toFixed(2)}</span>
             </div>
             ${r.discount_amount ? `
             <div class="pb-row pb-discount">
@@ -1728,7 +1800,7 @@ async function showReceiptDetail(id) {
 }
 
 async function deleteReceipt(id) {
-  if (!confirm('确定要删除这个账单吗？')) return;
+  if (!(await showConfirmDialog('确定要删除这个账单吗？'))) return;
   try {
     // Get image_url first
     const data = await sbGet('receipts', '?select=image_url&id=eq.' + id);
@@ -1835,8 +1907,8 @@ function addEditItemRow(item) {
   var qty = item ? item.quantity || 1 : 1;
   var price = item ? item.total_price || 0 : 0;
   var cat = item ? item.category_name || '其他' : '其他';
-  if (cat === '超市购物' && item && item.sub_category) {
-    cat = '超市购物-' + item.sub_category;
+  if (cat === '超市' && item && item.sub_category) {
+    cat = '超市-' + item.sub_category;
   }
   var unit = (item && item.unit) || '个';
   var div = document.createElement('div');
@@ -1850,7 +1922,7 @@ function addEditItemRow(item) {
   }
   unitHtml += '</select>';
   var catHtml = '<select class="ie-cat" onchange="calcEditTotal()">';
-  var cats = ['餐饮美食','超市购物','超市购物-坚果','超市购物-蔬菜','超市购物-宠物食品','超市购物-糕点面包','超市购物-饮料','超市购物-乳制品','超市购物-肉类海鲜','超市购物-水果','超市购物-零食','超市购物-日用品','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
+  var cats = ['餐饮美食','超市','超市-蔬菜','超市-水果','超市-肉类海鲜','超市-乳制品','超市-鸡蛋','超市-面包糕点','超市-饮料','超市-零食','超市-坚果','超市-速食食品','超市-预制食品','超市-粮油调味','超市-宠物食品','超市-日用品','超市-其他','交通出行','日用百货','数码电子','服饰美妆','医疗健康','休闲娱乐','其他'];
   for (var ci = 0; ci < cats.length; ci++) {
     catHtml += '<option value="' + cats[ci] + '" ' + (cat === cats[ci] || (!cat && cats[ci] === '其他') ? 'selected' : '') + '>' + cats[ci] + '</option>';
   }
@@ -1901,7 +1973,9 @@ async function saveEditReceipt(id) {
       quantity: parseFloat(row.querySelector('.ie-qty').value) || 1,
       total_price: parseFloat(row.querySelector('.ie-price').value) || 0,
       category_name: row.querySelector('.ie-cat').value || '其他',
-      unit: row.querySelector('.ie-unit').value || '个'
+      unit: row.querySelector('.ie-unit').value || '个',
+      discount_amount: parseFloat(row.querySelector('.ie-disc-amt')?.value) || 0,
+      discount_reason: (row.querySelector('.ie-disc-reason')?.value || '').trim()
     });
   });
 
@@ -1915,7 +1989,7 @@ async function saveEditReceipt(id) {
       store_name: document.getElementById('editStore').value.trim(),
       receipt_date: document.getElementById('editDate').value,
       receipt_time: document.getElementById('editTime').value,
-      total_amount: Math.max(0, (subtotal || itemTotal) - discount + tax),
+      total_amount: Math.max(0, (subtotal || itemTotal) - items.reduce(function(s,it){return s+(parseFloat(it.discount_amount)||0);},0) - discount + tax),
       subtotal: subtotal || itemTotal,
       discount_amount: discount,
       tax_amount: tax,

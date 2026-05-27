@@ -41,7 +41,7 @@
 
 ## 工作流程规则
 1. **必须测试** — 改完代码后先在本地用 Live Server 或直接打开 HTML 测试，确认无误后再提交推送
-2. **长任务通知** — 执行超过30秒的任务完成后必须发桌面通知（PushNotification工具）
+2. **长任务通知** — 执行超过30秒的任务完成后必须发桌面通知。先发 PushNotification（终端），再用 PowerShell NotifyIcon 弹系统右下角气泡（用户偏好）。两个都要。
 
 ## 注意事项
 - OCR 支持 5 个提供商：Claude/Gemini/DeepSeek/OpenAI/本地Tesseract

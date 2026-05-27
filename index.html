@@ -326,6 +326,17 @@
   <button class="tab" data-page="settings" onclick="switchTab('settings')"><span class="tab-icon">⚙️</span>设置</button>
 </div>
 
+<!-- ============ CONFIRM DIALOG ============ -->
+<div class="modal-overlay" id="confirmModal" style="display:none;">
+  <div class="modal-content" style="max-width:300px;text-align:center;">
+    <p id="confirmMessage" style="font-size:16px;margin:20px 0;color:var(--gray-700);"></p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="confirmCancel" style="min-width:80px;">取消</button>
+      <button class="btn btn-primary" id="confirmOk" style="min-width:80px;">确定</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ TOAST ============ -->
 <div class="toast" id="toast"></div>
 
