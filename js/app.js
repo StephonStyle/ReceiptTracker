@@ -650,17 +650,10 @@ async function startOcr(fileIndex) {
   document.getElementById('ocrLoadingText').textContent = 'AI 正在识别小票内容...';
   updateOcrProgress('compress');
 
-  _batchOcrMode = true;
   try {
-    var receipt = await processSingleOcr();
-    _batchOcrMode = false;
-    document.getElementById('ocrLoading').style.display = 'none';
-    updateOcrProgress('done');
-    fillOcrResult(receipt);
-    document.getElementById('ocrResult').style.display = 'block';
+    await processSingleOcr();
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
-    _batchOcrMode = false;
     document.getElementById('ocrLoading').style.display = 'none';
     diag('OCR失败: ' + e.message);
     retakePhoto();
