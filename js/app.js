@@ -189,6 +189,7 @@ function switchTab(tab) {
 
 function navigateTo(page) {
   if (page === 'add' || page === 'manual') {
+    if (page === 'add') retakePhoto();
     document.getElementById('backBtn').classList.add('show');
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');
