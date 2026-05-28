@@ -300,7 +300,7 @@ function renderRecentReceipts(receipts) {
     return;
   }
   container.innerHTML = receipts.map(r => `
-    <div class="receipt-card" onclick="showReceiptDetail(${r.id})">
+    <div class="receipt-card" onclick="showReceiptDetail(${r.id})" style="padding:14px;">
       <div class="rc-header">
         <div class="rc-store">${esc(r.store_name) || '未知商家'}</div>
         <div class="rc-total">${currencyMap[r.currency] || '¥'}${Number(r.total_amount).toFixed(2)}</div>
@@ -617,20 +617,16 @@ function renderUploadGallery(area) {
 }
 
 async function startOcr(fileIndex) {
-  var file;
-  if (fileIndex !== undefined && currentOcrFiles[fileIndex]) {
-    file = currentOcrFiles[fileIndex];
-    currentOcrImageFile = file;
-  } else {
-    file = currentOcrImageFile;
+  if (!currentOcrFiles.length) {
+    showToast('请先选择图片', 'error');
+    return;
   }
-  if (!file) return;
-
-  // Clear previous state
-  _batchOcrMode = false;
-  document.getElementById('ocrResult').style.display = 'none';
-  document.getElementById('ocrResult').innerHTML = '';
-  document.getElementById('ocrItems').innerHTML = '';
+  if (fileIndex !== undefined && currentOcrFiles[fileIndex]) {
+    currentOcrImageFile = currentOcrFiles[fileIndex];
+  } else {
+    currentOcrImageFile = currentOcrFiles[0];
+  }
+  if (!currentOcrImageFile) { showToast('图片文件无效', 'error'); return; }
 
   syncProviderFromDropdown();
   var apiKey = getApiKey();
@@ -646,15 +642,26 @@ async function startOcr(fileIndex) {
   }
 
   document.getElementById('ocrLoading').style.display = 'block';
+  document.getElementById('ocrResult').style.display = 'none';
+  document.getElementById('ocrResult').innerHTML = '';
+  document.getElementById('ocrItems').innerHTML = '';
+  document.getElementById('uploadArea').style.display = 'none';
+  document.getElementById('ocrLoadingText').textContent = 'AI 正在识别小票内容...';
   updateOcrProgress('compress');
 
+  _batchOcrMode = true;
   try {
-    await processSingleOcr();
+    var receipt = await processSingleOcr();
+    _batchOcrMode = false;
+    document.getElementById('ocrLoading').style.display = 'none';
+    updateOcrProgress('done');
+    fillOcrResult(receipt);
+    document.getElementById('ocrResult').style.display = 'block';
     showToast('识别完成，请确认信息', 'success');
   } catch (e) {
+    _batchOcrMode = false;
     document.getElementById('ocrLoading').style.display = 'none';
     diag('OCR失败: ' + e.message);
-    // Reset to camera on failure
     retakePhoto();
     if (e.message === 'Failed to fetch' || e.message.includes('NetworkError') || e.message.includes('network')) {
       showToast('网络连接失败，请检查网络后重试', 'error');
